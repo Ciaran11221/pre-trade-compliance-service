@@ -28,7 +28,7 @@ import io.github.ciaran11221.compliance.rules.LimitsRepository;
  * caller sees, and (rule 11) at most one change per setting key waiting to activate at a time.
  * Each public method is one transaction; approve() and cancel() start by locking the request row
  * (LimitChangeRepository.lockRequest), which is what makes rule 9's concurrent-approval race safe
- * -- see LimitChangeConcurrencyTest. requestChange() and approve() also take
+ * -- see LimitChangeConcurrentApprovalTest. requestChange() and approve() also take
  * LimitChangeRepository.lockSettingKey(), a per-key advisory lock, before deciding whether a
  * waiting change exists for that key -- see the Javadoc there for why the row lock alone can't
  * cover two different requests racing on the same key.
