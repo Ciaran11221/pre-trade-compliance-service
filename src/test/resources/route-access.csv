@@ -1,2 +1,7 @@
 method,path,roles
 GET,/api/me,ANY
+POST,/api/limit-changes,SUPERVISOR;COMPLIANCE;EXECUTIVE
+GET,/api/limit-changes/{id},SUPERVISOR;COMPLIANCE;EXECUTIVE
+POST,/api/limit-changes/{id}/approvals,SUPERVISOR;COMPLIANCE;EXECUTIVE
+POST,/api/limit-changes/{id}/cancel,SUPERVISOR;COMPLIANCE;EXECUTIVE
+GET,/api/limits,ANY

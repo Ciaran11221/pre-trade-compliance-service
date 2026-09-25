@@ -78,9 +78,13 @@ WHERE f.code = 'CBF' AND s.ticker = 'KSTL'
 ON CONFLICT DO NOTHING;
 
 -- Staff. anne's backup is sup-2. Nobody is out of office.
+-- sup-3 is a third desk-a supervisor, added for the limit-change "different-team" scenario (M6):
+-- that scenario needs two DISTINCT approvers who share the requester's team, and desk-a otherwise
+-- has only two members (anne and sup-1), one of whom would have to be the requester.
 INSERT INTO staff (id, name, team, backup_staff_id, out_of_office_from, out_of_office_until) VALUES
     ('sup-1', 'Siobhan Nagle', 'desk-a', NULL, NULL, NULL),
     ('sup-2', 'Malachy Ferris', 'desk-b', NULL, NULL, NULL),
+    ('sup-3', 'Fiachra Bellew', 'desk-a', NULL, NULL, NULL),
     ('comp-1', 'Orla Whitfield', 'compliance', NULL, NULL, NULL),
     ('exec-1', 'Declan Yorath', 'executive', NULL, NULL, NULL)
 ON CONFLICT DO NOTHING;
