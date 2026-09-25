@@ -1,0 +1,22 @@
+id: S013
+title: An EXECUTIVE requesting a large loosening still needs every approval
+kind: limit-change
+covers: [limit-change:no-rank-bypass]
+then:
+  outcome: "PENDING after 1 of 3 approvals, rank does not shrink the count"
+  note: >
+    QUARANTINE_EXPIRY_MINUTES cannot be priced in dollars, so any loosening of it is large by
+    definition (3 approvals, one COMPLIANCE). exec-1 (EXECUTIVE) requests it; no role, EXECUTIVE
+    included, reduces the approvals a large loosening needs. After only 1 approval it is still
+    PENDING.
+steps:
+  - actor: exec-1
+    roles: [EXECUTIVE]
+    action: request
+    fields: {key: QUARANTINE_EXPIRY_MINUTES, newValue: "60", reason: "raise the quarantine expiry window", ref: r1}
+    expect: {httpStatus: 201, resultStatus: PENDING, requiredApprovals: 3}
+  - actor: comp-1
+    roles: [COMPLIANCE]
+    action: approve
+    fields: {ref: r1}
+    expect: {httpStatus: 200, resultStatus: PENDING, requiredApprovals: 3}

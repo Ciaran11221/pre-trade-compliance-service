@@ -1,0 +1,16 @@
+id: S011
+title: Requesting the over-limit bucket past 25 percent refuses at the legal maximum
+kind: limit-change
+covers: [limit-change:legal-maximum]
+then:
+  outcome: "422, never reaches approval, refusal recorded"
+  note: >
+    OVER_LIMIT_BUCKET_PCT's hard bound is <= 25 (the US 1940 Act figure, LegalLimits in code).
+    25 to 40 crosses it, so the request is refused before a limit_change_request row is ever
+    created; the attempt itself is still recorded in limit_change_refusal.
+steps:
+  - actor: sup-1
+    roles: [SUPERVISOR]
+    action: request
+    fields: {key: OVER_LIMIT_BUCKET_PCT, newValue: "40", reason: "raise the over-limit bucket past its legal maximum", ref: r1}
+    expect: {httpStatus: 422}

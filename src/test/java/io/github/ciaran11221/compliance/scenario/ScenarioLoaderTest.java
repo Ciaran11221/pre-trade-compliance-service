@@ -19,7 +19,8 @@ class ScenarioLoaderTest {
 		List<Scenario> scenarios = ScenarioLoader.loadAllValidated();
 
 		assertThat(scenarios).extracting(Scenario::id)
-			.containsExactly("S001", "S002", "S003", "S004", "S005", "S006", "S007", "S008", "S009", "S010");
+			.containsExactly("S001", "S002", "S003", "S004", "S005", "S006", "S007", "S008", "S009", "S010", "S011",
+					"S012", "S013", "S014", "S015", "S016", "S017", "S018", "S019", "S020");
 	}
 
 	@Test

@@ -1,0 +1,39 @@
+id: S014
+title: Two approvals from the requester's own team never activate a loosening
+kind: limit-change
+covers: [limit-change:different-team]
+then:
+  outcome: "PENDING forever: both approvers share the requester's team"
+  note: >
+    Rule 5: at least one approver must be from a different team than the requester, at every
+    tier. anne (desk-a) tightens the bucket to 24 first (so there is legal room to loosen back
+    into), then requests loosening it to 24.5 -- a small, non-large loosening (2 approvals) since
+    the dollar impact is well under both LARGE_LOOSENING_USD and 1% of the affected funds' total
+    assets. sup-1 and sup-3 are both desk-a like anne (sup-3 exists in the seed data for exactly
+    this), so even after 2 approvals -- the number required -- the request never activates.
+steps:
+  - actor: anne
+    roles: [SUPERVISOR]
+    action: request
+    fields: {key: OVER_LIMIT_BUCKET_PCT, newValue: "24", reason: "tighten the bucket a little", ref: r1}
+    expect: {httpStatus: 201, resultStatus: PENDING, requiredApprovals: 1}
+  - actor: sup-2
+    roles: [SUPERVISOR]
+    action: approve
+    fields: {ref: r1}
+    expect: {httpStatus: 200, resultStatus: ACTIVE}
+  - actor: anne
+    roles: [SUPERVISOR]
+    action: request
+    fields: {key: OVER_LIMIT_BUCKET_PCT, newValue: "24.5", reason: "loosen the bucket back slightly", ref: r2}
+    expect: {httpStatus: 201, resultStatus: PENDING, requiredApprovals: 2, hidesBreach: false}
+  - actor: sup-1
+    roles: [SUPERVISOR]
+    action: approve
+    fields: {ref: r2}
+    expect: {httpStatus: 200, resultStatus: PENDING}
+  - actor: sup-3
+    roles: [SUPERVISOR]
+    action: approve
+    fields: {ref: r2}
+    expect: {httpStatus: 200, resultStatus: PENDING}

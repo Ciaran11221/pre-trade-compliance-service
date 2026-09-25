@@ -1,0 +1,21 @@
+id: S016
+title: A tightening activates immediately on its one required approval
+kind: limit-change
+covers: [limit-change:tightening]
+then:
+  outcome: "ACTIVE straight after 1 approval"
+  note: >
+    Rule 3/6: tightening always needs exactly 1 approval and activates on that approval, with no
+    cooling-off wait -- an urgent tightening is already fast. sup-1 tightens the over-limit
+    bucket from 25 to 20; sup-2 (a different team) approves once and it is active immediately.
+steps:
+  - actor: sup-1
+    roles: [SUPERVISOR]
+    action: request
+    fields: {key: OVER_LIMIT_BUCKET_PCT, newValue: "20", reason: "tighten the over-limit bucket", ref: r1}
+    expect: {httpStatus: 201, resultStatus: PENDING, requiredApprovals: 1}
+  - actor: sup-2
+    roles: [SUPERVISOR]
+    action: approve
+    fields: {ref: r1}
+    expect: {httpStatus: 200, resultStatus: ACTIVE}

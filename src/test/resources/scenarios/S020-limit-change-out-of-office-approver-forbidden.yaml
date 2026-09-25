@@ -1,0 +1,24 @@
+id: S020
+title: An out-of-office approver may not approve a limit-change request
+kind: limit-change
+covers: [limit-change:out-of-office-approver]
+given:
+  outOfOffice:
+    - {staffId: sup-2, from: "2025-12-01T00:00:00Z", until: "2026-02-01T00:00:00Z"}
+then:
+  outcome: "403, out-of-office approver refused"
+  note: >
+    Any approval by a user marked out of office is refused: their token may be stolen. sup-2 is
+    marked out of office spanning the whole scenario (the test clock starts at
+    2026-01-01T00:00:00Z, inside the window) and is turned away when they try to approve.
+steps:
+  - actor: anne
+    roles: [SUPERVISOR]
+    action: request
+    fields: {key: ISSUER_LIMIT_PCT, newValue: "4", reason: "tighten the issuer limit", ref: r1}
+    expect: {httpStatus: 201, resultStatus: PENDING, requiredApprovals: 1}
+  - actor: sup-2
+    roles: [SUPERVISOR]
+    action: approve
+    fields: {ref: r1}
+    expect: {httpStatus: 403}
