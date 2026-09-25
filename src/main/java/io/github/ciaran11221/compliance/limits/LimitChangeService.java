@@ -23,11 +23,15 @@ import io.github.ciaran11221.compliance.rules.Limits;
 import io.github.ciaran11221.compliance.rules.LimitsRepository;
 
 /**
- * Rules 1-10 of the limit-change process: hard bounds, the impact preview, how many approvals a
- * change needs, who may give them, when a change activates, cancellation, staleness and the
- * status a caller sees. Each public method is one transaction; approve() and cancel() start by
- * locking the request row (LimitChangeRepository.lockRequest), which is what makes rule 9's
- * concurrent-approval race safe -- see LimitChangeConcurrencyTest.
+ * Rules 1-11 of the limit-change process: hard bounds, the impact preview, how many approvals a
+ * change needs, who may give them, when a change activates, cancellation, staleness, the status a
+ * caller sees, and (rule 11) at most one change per setting key waiting to activate at a time.
+ * Each public method is one transaction; approve() and cancel() start by locking the request row
+ * (LimitChangeRepository.lockRequest), which is what makes rule 9's concurrent-approval race safe
+ * -- see LimitChangeConcurrencyTest. requestChange() and approve() also take
+ * LimitChangeRepository.lockSettingKey(), a per-key advisory lock, before deciding whether a
+ * waiting change exists for that key -- see the Javadoc there for why the row lock alone can't
+ * cover two different requests racing on the same key.
  */
 @Service
 public class LimitChangeService {
@@ -59,12 +63,21 @@ public class LimitChangeService {
 	// request itself is refused, and ErrorResponseException is an unchecked exception -- Spring's
 	// default rollback-on-any-RuntimeException would otherwise undo that insert the instant this
 	// method throws to report the refusal, silently discarding the very row the refusal exists to
-	// leave behind. The "nothing to change" branch throws the same exception type with nothing yet
-	// written, so telling Spring not to roll back on it there is a no-op, not a risk.
+	// leave behind. The "nothing to change" branch and the rule-11 waiting-change conflict below
+	// both throw the same exception type with nothing yet written (lockSettingKey takes an
+	// advisory lock, not a row -- there is nothing for a rollback to undo there either), so telling
+	// Spring not to roll back on either of them is a no-op, not a risk.
 	@Transactional(noRollbackFor = ErrorResponseException.class)
 	public LimitChangeView requestChange(String requesterId, LimitChangeRequestBody body) {
 		LimitKey key = parseKey(body.key());
 		Instant now = clock.instant();
+
+		// Rule 11: serialise against any other in-flight request or approval for this key before
+		// even looking at whether one is waiting -- see LimitChangeRepository.lockSettingKey.
+		limitChangeRepository.lockSettingKey(key.name());
+		limitChangeRepository.findWaitingChange(key.name(), now, 0L)
+			.ifPresent(waiting -> { throw waitingChangeConflict(key.name(), waiting); });
+
 		Limits currentLimits = limitsRepository.activeLimits();
 		BigDecimal oldValue = currentLimits.get(key);
 		BigDecimal newValue = body.newValue();
@@ -110,9 +123,26 @@ public class LimitChangeService {
 		LimitChangeRepository.RequestRow requestRow = limitChangeRepository.lockRequest(id)
 			.orElseThrow(() -> LimitChangeProblems.notFound("no limit change request with id " + id));
 
+		// Rule 11: the same per-key advisory lock requestChange() takes, held for the rest of this
+		// transaction. lockRequest's FOR UPDATE above only ever covers this one request's row, so
+		// two concurrent final approvals on two DIFFERENT requests for the same key -- the race the
+		// rule-11 finding turned up -- would otherwise both reach the waiting-change check below (and
+		// maybeActivate) without either seeing the other's write. This lock is what makes that
+		// impossible: whichever approval gets here second blocks until the first transaction commits
+		// or rolls back. See LimitChangeRepository.lockSettingKey.
+		limitChangeRepository.lockSettingKey(requestRow.settingKey());
+
 		if (limitChangeRepository.findCancellation(id).isPresent()) {
 			throw LimitChangeProblems.conflict("this request has been cancelled.");
 		}
+
+		// Rule 11: approving a DIFFERENT request for a key that already has a change waiting to
+		// activate is refused -- exactly the gap the finding describes (an urgent tightening
+		// silently undone hours later when the earlier loosening's cooling-off ends). Approving the
+		// waiting request itself is unaffected: findWaitingChange excludes this id, so a later
+		// approver finishing off the very request that is waiting sails through, same as today.
+		limitChangeRepository.findWaitingChange(requestRow.settingKey(), now, id)
+			.ifPresent(waiting -> { throw waitingChangeConflict(requestRow.settingKey(), waiting); });
 
 		// Rule 7 (stale) only means "some OTHER change moved the active value out from under this
 		// one" -- never this request's own activation. Skipping the check once this request has
@@ -279,6 +309,13 @@ public class LimitChangeService {
 	private boolean isOutOfOffice(Staff staff, Instant now) {
 		return staff.getOutOfOfficeFrom() != null && staff.getOutOfOfficeUntil() != null
 				&& !now.isBefore(staff.getOutOfOfficeFrom()) && now.isBefore(staff.getOutOfOfficeUntil());
+	}
+
+	/** Rule 11's 409: names the key, the waiting request, and when it activates. */
+	private ErrorResponseException waitingChangeConflict(String settingKey,
+			LimitChangeRepository.WaitingChangeRow waiting) {
+		return LimitChangeProblems.conflict(settingKey + " already has a change waiting to activate (request "
+				+ waiting.requestId() + ", activates at " + waiting.activatesAt() + "); cancel it first.");
 	}
 
 	private LimitKey parseKey(String key) {

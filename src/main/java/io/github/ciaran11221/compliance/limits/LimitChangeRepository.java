@@ -37,6 +37,10 @@ public class LimitChangeRepository {
 	public record CancellationRow(long requestId, String cancelledBy, Instant cancelledAt) {
 	}
 
+	/** Rule 11: a change to the same setting key that is approved but not yet active. */
+	public record WaitingChangeRow(long requestId, Instant activatesAt) {
+	}
+
 	private final JdbcTemplate jdbcTemplate;
 
 	public LimitChangeRepository(JdbcTemplate jdbcTemplate) {
@@ -133,6 +137,47 @@ public class LimitChangeRepository {
 		catch (EmptyResultDataAccessException ex) {
 			return Optional.empty();
 		}
+	}
+
+	/**
+	 * Rule 11 (one waiting change per key): serialises every request-change or approval transaction
+	 * for this setting key on a Postgres session-scoped-to-transaction advisory lock. Held until the
+	 * caller's transaction commits or rolls back (pg_advisory_xact_lock, never explicitly unlocked),
+	 * so two concurrent transactions touching the same key -- two requests, two approvals on
+	 * different requests, or one of each -- can never both pass the "is a change already waiting"
+	 * check below before either commits: whichever gets here second simply blocks until the first is
+	 * done. hashtext(?) turns the key name into a 32-bit int; pg_advisory_xact_lock(bigint) widens
+	 * that to 64 bits implicitly, so this is one round trip with no separate key-to-id table needed.
+	 * A FOR UPDATE row lock (as lockRequest takes) can't do this job: it only ever covers one
+	 * request's row, so two different requests for the same key never contend for the same lock.
+	 */
+	public void lockSettingKey(String settingKey) {
+		jdbcTemplate.query("SELECT pg_advisory_xact_lock(hashtext(?))", rs -> null, settingKey);
+	}
+
+	/**
+	 * The earliest not-yet-cancelled activation for this setting key whose activates_at is still in
+	 * the future, excluding excludeRequestId (a request is never "waiting on itself"). Empty once
+	 * that activation's activates_at has passed -- LimitsRepository.activeLimits already treats it as
+	 * active from that moment, so rule 11 has nothing left to protect against.
+	 */
+	public Optional<WaitingChangeRow> findWaitingChange(String settingKey, Instant now, long excludeRequestId) {
+		return jdbcTemplate.query("""
+				SELECT a.request_id, a.activates_at
+				FROM limit_change_activation a
+				JOIN limit_change_request r ON r.id = a.request_id
+				WHERE r.setting_key = ? AND a.activates_at > ? AND a.request_id <> ?
+				  AND NOT EXISTS (
+				      SELECT 1 FROM limit_change_cancellation c WHERE c.request_id = a.request_id
+				  )
+				ORDER BY a.activates_at ASC
+				LIMIT 1
+				""",
+				(rs, rowNum) -> new WaitingChangeRow(rs.getLong("request_id"),
+						rs.getTimestamp("activates_at").toInstant()),
+				settingKey, Timestamp.from(now), excludeRequestId)
+			.stream()
+			.findFirst();
 	}
 
 	public long insertRequest(String settingKey, BigDecimal oldValue, BigDecimal newValue, String direction,
