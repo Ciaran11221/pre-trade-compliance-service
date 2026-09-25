@@ -20,3 +20,6 @@ jobs:
           java-version: '17'
           cache: maven
       - run: ./mvnw -B verify
+      - name: Confirm TokenTool did not ship in the jar
+        run: |
+          if unzip -l target/*.jar | grep -q TokenTool; then echo "TokenTool must not ship in the jar"; exit 1; fi

@@ -11,6 +11,14 @@ spring:
       ddl-auto: validate
   flyway:
     locations: classpath:db/migration
+
+compliance:
+  security:
+    # No default on purpose: the service must fail to start without a real signing secret. See
+    # SecurityConfig.jwtSigningKey, application-local.yml (dev-only value) and
+    # src/test/resources/application-test.yml (test-only value).
+    jwt-secret: ${JWT_SECRET:}
+
 management:
   endpoints:
     web:

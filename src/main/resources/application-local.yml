@@ -3,3 +3,9 @@ spring:
     # local profile only: loads fictional demo data on top of the real schema/config migrations,
     # so a developer running this service locally has funds, securities and staff to work with.
     locations: classpath:db/migration,classpath:db/seed
+
+compliance:
+  security:
+    # local profile only, for a developer running the service on their own machine (see TokenTool,
+    # which signs tokens with this same value). Never use this value outside a local run.
+    jwt-secret: local-dev-only-secret-do-not-use-in-any-other-environment
