@@ -19,7 +19,20 @@ class ScenarioLoaderTest {
 		List<Scenario> scenarios = ScenarioLoader.loadAllValidated();
 
 		assertThat(scenarios).extracting(Scenario::id)
-			.containsExactly("S001", "S002", "S003", "S004", "S005", "S006");
+			.containsExactly("S001", "S002", "S003", "S004", "S005", "S006", "S007", "S008", "S009", "S010");
+	}
+
+	@Test
+	void issuerParsesWhenPresentAndDefaultsToNullWhenAbsent() {
+		List<Scenario> scenarios = ScenarioLoader.loadAllValidated();
+		Scenario s001 = scenarios.stream().filter(s -> s.id().equals("S001")).findFirst().orElseThrow();
+		Scenario s007 = scenarios.stream().filter(s -> s.id().equals("S007")).findFirst().orElseThrow();
+
+		assertThat(s001.given().securities()).extracting(Scenario.Security::issuer).containsOnlyNulls();
+		assertThat(s007.given().securities())
+			.filteredOn(security -> security.ticker().equals("EMBA") || security.ticker().equals("EMBB"))
+			.extracting(Scenario.Security::issuer)
+			.containsOnly("Emberlyn Group");
 	}
 
 	@Test

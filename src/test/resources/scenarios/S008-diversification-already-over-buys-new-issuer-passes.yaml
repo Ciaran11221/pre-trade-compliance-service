@@ -1,0 +1,29 @@
+id: S008
+title: Fund already 27 percent over-limit buys a small new-issuer position that stays under 5 percent, passes
+kind: rule
+covers: [rule:diversification]
+given:
+  settings: {}
+  fund: {code: PMF, totalAssets: "1000000000", cash: "50000000", diversified: true}
+  securities:
+    - {ticker: PLUTO, issuer: Plutarch Resources, price: "300", votingSharesOutstanding: 50000000, avgDailyVolume: 1000000}
+    - {ticker: MINR, issuer: Minorca Trading, price: "50", votingSharesOutstanding: 10000000, avgDailyVolume: 1000000}
+  holdings:
+    - {ticker: PLUTO, quantity: 900000}
+  restricted: []
+  pendingOrders: []
+when:
+  order: {side: BUY, ticker: MINR, quantity: 10000}
+then:
+  outcome: PASS
+  rules: {diversification: PASS}
+  note: >
+    PLUTO 900,000 sh x $300 = $270,000,000, 27% of $1,000,000,000, already over the 25% bucket
+    limit before this order, from price moves, with no pending orders involved. The BUY is
+    10,000 MINR sh x $50 = $500,000, 0.05% of assets, a different fictional issuer entirely and
+    nowhere near the 5% per-issuer threshold, so MINR is not over and adds nothing to the over-5%
+    total. Post-trade over-5% total is still $270,000,000 (27%), over the 25% limit but UNCHANGED
+    from the $270,000,000 pre-trade total, so it did not grow. The rule blocks only when a buy both
+    leaves the fund over the bucket limit AND grows that bucket, matching the acquisition-time
+    reading of the statute: a fund pushed over 25% by price moves is not forced to sell, and may
+    still buy a position that does not itself add to the over-limit group. So PASS.

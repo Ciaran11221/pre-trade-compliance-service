@@ -20,7 +20,10 @@ public record Scenario(String id, String title, String kind, List<String> covers
 	public record Fund(String code, BigDecimal totalAssets, BigDecimal cash, boolean diversified) {
 	}
 
-	public record Security(String ticker, BigDecimal price, long votingSharesOutstanding, long avgDailyVolume) {
+	// issuer is nullable: scenarios written before issuer aggregation mattered (S001-S006) omit
+	// it and default to the ticker as its own issuer. See RuleScenarioTest.buildContext.
+	public record Security(String ticker, String issuer, BigDecimal price, long votingSharesOutstanding,
+			long avgDailyVolume) {
 	}
 
 	public record Holding(String ticker, long quantity) {
