@@ -1,6 +1,16 @@
 spring:
   application:
     name: pre-trade-compliance-service
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/compliance}
+    username: ${DB_USER:compliance}
+    password: ${DB_PASSWORD:compliance}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    locations: classpath:db/migration
 management:
   endpoints:
     web:
