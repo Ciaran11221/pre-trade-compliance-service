@@ -1,0 +1,5 @@
+spring:
+  flyway:
+    # local profile only: loads fictional demo data on top of the real schema/config migrations,
+    # so a developer running this service locally has funds, securities and staff to work with.
+    locations: classpath:db/migration,classpath:db/seed
