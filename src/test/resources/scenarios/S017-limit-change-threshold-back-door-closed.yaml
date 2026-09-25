@@ -1,0 +1,32 @@
+id: S017
+title: Raising LARGE_LOOSENING_USD itself takes the full large-loosening process
+kind: limit-change
+covers: [limit-change:threshold-back-door]
+then:
+  outcome: "3 approvals incl. COMPLIANCE required to raise the large-loosening threshold"
+  note: >
+    LARGE_LOOSENING_USD is a back door to fewer approvers: raising it makes future changes look
+    smaller against the threshold. It is itself not priceable, so raising it (a loosening, by
+    LimitKey's looser-direction) is always large and needs 3 approvals including one COMPLIANCE
+    -- the same process it would otherwise let a change skip.
+steps:
+  - actor: sup-1
+    roles: [SUPERVISOR]
+    action: request
+    fields: {key: LARGE_LOOSENING_USD, newValue: "60000000", reason: "raise the large-loosening dollar threshold", ref: r1}
+    expect: {httpStatus: 201, resultStatus: PENDING, requiredApprovals: 3}
+  - actor: sup-2
+    roles: [SUPERVISOR]
+    action: approve
+    fields: {ref: r1}
+    expect: {httpStatus: 200, resultStatus: PENDING}
+  - actor: exec-1
+    roles: [EXECUTIVE]
+    action: approve
+    fields: {ref: r1}
+    expect: {httpStatus: 200, resultStatus: PENDING}
+  - actor: comp-1
+    roles: [COMPLIANCE]
+    action: approve
+    fields: {ref: r1}
+    expect: {httpStatus: 200, resultStatus: AWAITING_ACTIVATION, requiredApprovals: 3}

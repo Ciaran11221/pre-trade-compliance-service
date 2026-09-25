@@ -1,0 +1,32 @@
+id: S019
+title: Approving a request after its active value moved underneath it is refused as stale
+kind: limit-change
+covers: [limit-change:stale]
+then:
+  outcome: "409, stale"
+  note: >
+    Rule 7: if the active value changed after the request was made, approving it fails. sup-1
+    requests tightening ISSUER_LIMIT_PCT to 4 (request A, still open). Before anyone approves A,
+    brian's separate request to tighten it to 3 (request B) is approved and activates, moving the
+    active value to 3 -- out from under request A, whose old_value still says 5.
+steps:
+  - actor: sup-1
+    roles: [SUPERVISOR]
+    action: request
+    fields: {key: ISSUER_LIMIT_PCT, newValue: "4", reason: "tighten the issuer limit (request A)", ref: r1}
+    expect: {httpStatus: 201, resultStatus: PENDING, requiredApprovals: 1}
+  - actor: brian
+    roles: [SUPERVISOR]
+    action: request
+    fields: {key: ISSUER_LIMIT_PCT, newValue: "3", reason: "tighten the issuer limit further (request B)", ref: r2}
+    expect: {httpStatus: 201, resultStatus: PENDING, requiredApprovals: 1}
+  - actor: anne
+    roles: [SUPERVISOR]
+    action: approve
+    fields: {ref: r2}
+    expect: {httpStatus: 200, resultStatus: ACTIVE}
+  - actor: sup-2
+    roles: [SUPERVISOR]
+    action: approve
+    fields: {ref: r1}
+    expect: {httpStatus: 409}

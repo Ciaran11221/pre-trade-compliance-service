@@ -1,0 +1,49 @@
+id: S018
+title: A loosening that would hide an existing breach counts as large
+kind: limit-change
+covers: [limit-change:hides-breach]
+given:
+  fund: {code: LCB, totalAssets: "100000000", cash: "1000000", diversified: true}
+  securities:
+    - {ticker: LCXB, issuer: "Larchmere Concrete", price: "230", votingSharesOutstanding: 200000000, avgDailyVolume: 100000}
+  holdings:
+    - {ticker: LCXB, quantity: 100000}
+then:
+  outcome: "3 approvals: the loosening would hide a real breach"
+  note: >
+    Fixture fund LCB holds a single over-5% issuer position worth exactly $23,000,000 -- 23% of
+    its $100,000,000 total assets. After sup-1's bucket tightening to 20% is active, LCB is over
+    the bucket (23% > 20%). Loosening the bucket back to 25% would take LCB from breach to
+    compliant without anyone touching the position -- hiding the breach -- so the loosening
+    counts as large (3 approvals, one COMPLIANCE) regardless of its dollar impact elsewhere.
+steps:
+  - actor: sup-1
+    roles: [SUPERVISOR]
+    action: request
+    fields: {key: OVER_LIMIT_BUCKET_PCT, newValue: "20", reason: "tighten the bucket ahead of the breach check", ref: r1}
+    expect: {httpStatus: 201, resultStatus: PENDING, requiredApprovals: 1}
+  - actor: sup-2
+    roles: [SUPERVISOR]
+    action: approve
+    fields: {ref: r1}
+    expect: {httpStatus: 200, resultStatus: ACTIVE}
+  - actor: brian
+    roles: [SUPERVISOR]
+    action: request
+    fields: {key: OVER_LIMIT_BUCKET_PCT, newValue: "25", reason: "loosen the bucket back to the legal maximum", ref: r2}
+    expect: {httpStatus: 201, resultStatus: PENDING, requiredApprovals: 3, hidesBreach: true}
+  - actor: sup-1
+    roles: [SUPERVISOR]
+    action: approve
+    fields: {ref: r2}
+    expect: {httpStatus: 200, resultStatus: PENDING}
+  - actor: exec-1
+    roles: [EXECUTIVE]
+    action: approve
+    fields: {ref: r2}
+    expect: {httpStatus: 200, resultStatus: PENDING}
+  - actor: comp-1
+    roles: [COMPLIANCE]
+    action: approve
+    fields: {ref: r2}
+    expect: {httpStatus: 200, resultStatus: AWAITING_ACTIVATION}

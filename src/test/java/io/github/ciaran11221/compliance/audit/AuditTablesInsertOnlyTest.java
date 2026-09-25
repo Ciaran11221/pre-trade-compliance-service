@@ -43,7 +43,8 @@ class AuditTablesInsertOnlyTest {
 			new AuditTable("limit_change_preview", "request_id"),
 			new AuditTable("limit_change_approval", "id"),
 			new AuditTable("limit_change_activation", "request_id"),
-			new AuditTable("limit_change_cancellation", "request_id"));
+			new AuditTable("limit_change_cancellation", "request_id"),
+			new AuditTable("limit_change_refusal", "id"));
 
 	@Autowired
 	private JdbcTemplate jdbc;
@@ -111,6 +112,9 @@ class AuditTablesInsertOnlyTest {
 
 		jdbc.update("INSERT INTO limit_change_cancellation (request_id, cancelled_by, cancelled_at) "
 				+ "VALUES (?, 'exec-1', now())", requestId);
+
+		jdbc.update("INSERT INTO limit_change_refusal (requester, setting_key, requested_value, reason, refused_at) "
+				+ "VALUES ('comp-1', 'ISSUER_LIMIT_PCT', 40, 'ISSUER_LIMIT_PCT must be <= 5', now())");
 	}
 
 	@TestFactory

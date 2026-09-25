@@ -1,6 +1,12 @@
 spring:
   flyway:
     locations: classpath:db/migration,classpath:db/seed
+    # test profile only: LimitChangeScenarioTest and LimitChangeConcurrentApprovalTest call
+    # Flyway.clean() + migrate() between scenarios to reset to the seeded state, since the
+    # limit-change audit tables are insert-only and cannot be reset with DELETE. Flyway defaults
+    # clean-disabled to true as a production safeguard; this profile only ever runs against a
+    # disposable Testcontainers database.
+    clean-disabled: false
 
 compliance:
   security:

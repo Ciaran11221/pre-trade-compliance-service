@@ -18,10 +18,18 @@ import org.springframework.stereotype.Component;
 @Component
 public class LimitsRepository {
 
+	// A change never takes effect if it was cancelled before its activates_at (see
+	// limits.LimitChangeService.cancel): setting_value is insert-only, so the row this join
+	// excludes was already written, and this query is what makes it invisible rather than deleting
+	// it. change_request_id is NULL for the day-one defaults V3 loads, which never matches a
+	// cancellation's request_id, so those rows are never excluded by this join.
 	private static final String ACTIVE_VALUE_SQL = """
-			SELECT value FROM setting_value
-			WHERE setting_key = ? AND active_from <= ?
-			ORDER BY active_from DESC, id DESC
+			SELECT sv.value FROM setting_value sv
+			WHERE sv.setting_key = ? AND sv.active_from <= ?
+			  AND NOT EXISTS (
+			      SELECT 1 FROM limit_change_cancellation c WHERE c.request_id = sv.change_request_id
+			  )
+			ORDER BY sv.active_from DESC, sv.id DESC
 			LIMIT 1
 			""";
 

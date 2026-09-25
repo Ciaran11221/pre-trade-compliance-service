@@ -19,7 +19,7 @@ class ScenarioValidationTest {
 
 	private static final Scenario.Given GIVEN = new Scenario.Given(Map.of(),
 			new Scenario.Fund("HGF", new BigDecimal("1000000000"), new BigDecimal("100000000"), true), List.of(),
-			List.of(), List.of(), List.of());
+			List.of(), List.of(), List.of(), List.of());
 
 	private static final Scenario.When WHEN = new Scenario.When(new Scenario.Order("BUY", "KSTL", 1000));
 
@@ -33,7 +33,7 @@ class ScenarioValidationTest {
 	@Test
 	void missingIdIsReported() {
 		Scenario scenario = new Scenario(null, "t", "rule", List.of("rule:diversification"), GIVEN, WHEN,
-				new Scenario.Then("PASS", Map.of(), "n"));
+				new Scenario.Then("PASS", Map.of(), "n"), List.of());
 
 		List<String> errors = ScenarioValidation.validate(List.of(new Loaded("S001-x.yaml", scenario)));
 
@@ -90,7 +90,7 @@ class ScenarioValidationTest {
 	@Test
 	void missingOutcomeIsReported() {
 		Scenario scenario = new Scenario("S001", "t", "rule", List.of("rule:diversification"), GIVEN, WHEN,
-				new Scenario.Then(null, Map.of(), "n"));
+				new Scenario.Then(null, Map.of(), "n"), List.of());
 
 		List<String> errors = ScenarioValidation.validate(List.of(new Loaded("S001-x.yaml", scenario)));
 
@@ -98,7 +98,7 @@ class ScenarioValidationTest {
 	}
 
 	private static Scenario scenario(String id, String kind, List<String> covers, String outcome) {
-		return new Scenario(id, "t", kind, covers, GIVEN, WHEN, new Scenario.Then(outcome, Map.of(), "n"));
+		return new Scenario(id, "t", kind, covers, GIVEN, WHEN, new Scenario.Then(outcome, Map.of(), "n"), List.of());
 	}
 
 }

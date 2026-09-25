@@ -109,9 +109,19 @@ class RouteAccessMatrixTest {
 		return args;
 	}
 
+	// route-access.csv carries the literal path template ("/api/limit-changes/{id}/approvals"),
+	// braces included, since that is what a route is keyed by. RestClient's uri(String) overload
+	// treats "{...}" as a URI template variable to expand, not literal text, and errors ("Not
+	// enough variable values available to expand 'id'") when none is supplied. Substituting a
+	// concrete id here -- one that does not exist, so every call 404s or is turned away by
+	// @PreAuthorize before that -- turns the CSV path into a plain literal URL. It is substituted
+	// after the braces are gone, so uri(String) never sees a template to expand.
+	private static final String SUBSTITUTE_ID = "999999";
+
 	private ResponseEntity<String> call(HttpMethod method, String path, String token) {
+		String resolvedPath = path.replace("{id}", SUBSTITUTE_ID);
 		return restClient.method(method)
-			.uri("http://localhost:" + port + path)
+			.uri("http://localhost:" + port + resolvedPath)
 			.headers(headers -> headers.setBearerAuth(token))
 			.exchange((req, res) -> ResponseEntity.status(res.getStatusCode())
 				.headers(res.getHeaders())

@@ -55,7 +55,7 @@ public class DiversificationRule implements ComplianceRule {
 		BigDecimal overSumPost = overSum(context, positions(context, true), totalAssets);
 
 		BigDecimal bucketPct = context.limits().get(LimitKey.OVER_LIMIT_BUCKET_PCT);
-		boolean overBucket = overSumPost.multiply(HUNDRED).compareTo(bucketPct.multiply(totalAssets)) > 0;
+		boolean overBucket = IssuerOverLimitCalculator.overBucket(overSumPost, bucketPct, totalAssets);
 		boolean grew = overSumPost.compareTo(overSumPre) > 0;
 		BigDecimal measuredPct = overSumPost.multiply(HUNDRED).divide(totalAssets, 4, RoundingMode.HALF_UP);
 
@@ -93,36 +93,12 @@ public class DiversificationRule implements ComplianceRule {
 
 	private BigDecimal overSum(OrderContext context, Map<String, Long> positions, BigDecimal totalAssets) {
 		BigDecimal votingLimitPct = context.limits().get(LimitKey.VOTING_LIMIT_PCT);
-		Map<String, BigDecimal> valueByIssuer = new LinkedHashMap<>();
-		Map<String, Boolean> votingOverByIssuer = new LinkedHashMap<>();
-
-		positions.forEach((ticker, quantity) -> {
-			if (quantity <= 0) {
-				return;
-			}
-			OrderContext.SecurityInfo info = context.securityInfo(ticker);
-			BigDecimal value = info.price().multiply(BigDecimal.valueOf(quantity));
-			valueByIssuer.merge(info.issuer(), value, BigDecimal::add);
-
-			boolean votingOver = BigDecimal.valueOf(quantity)
-				.multiply(HUNDRED)
-				.compareTo(votingLimitPct.multiply(BigDecimal.valueOf(info.votingSharesOutstanding()))) > 0;
-			if (votingOver) {
-				votingOverByIssuer.merge(info.issuer(), true, Boolean::logicalOr);
-			}
-		});
-
 		BigDecimal issuerLimitPct = context.limits().get(LimitKey.ISSUER_LIMIT_PCT);
-		BigDecimal overSum = BigDecimal.ZERO;
-		for (Map.Entry<String, BigDecimal> entry : valueByIssuer.entrySet()) {
-			BigDecimal value = entry.getValue();
-			boolean valueOver = value.multiply(HUNDRED).compareTo(issuerLimitPct.multiply(totalAssets)) > 0;
-			boolean votingOver = votingOverByIssuer.getOrDefault(entry.getKey(), false);
-			if (valueOver || votingOver) {
-				overSum = overSum.add(value);
-			}
-		}
-		return overSum;
+		return IssuerOverLimitCalculator.overSum(positions, ticker -> {
+			OrderContext.SecurityInfo info = context.securityInfo(ticker);
+			return new IssuerOverLimitCalculator.SecurityRef(info.issuer(), info.price(),
+					info.votingSharesOutstanding());
+		}, totalAssets, issuerLimitPct, votingLimitPct);
 	}
 
 }

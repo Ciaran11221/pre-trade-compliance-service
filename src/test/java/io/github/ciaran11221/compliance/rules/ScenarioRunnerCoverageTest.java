@@ -18,7 +18,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class ScenarioRunnerCoverageTest {
 
-	private static final Set<String> KINDS_WITH_RUNNER = Set.of("rule");
+	private static final Set<String> KINDS_WITH_RUNNER = Set.of("rule", "limit-change");
 
 	@Test
 	void everyScenarioKindHasARunner() {

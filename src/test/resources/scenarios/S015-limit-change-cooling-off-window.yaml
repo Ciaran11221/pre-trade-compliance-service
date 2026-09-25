@@ -1,0 +1,47 @@
+id: S015
+title: An approved large loosening is inactive at 23h59m and active at 24h
+kind: limit-change
+covers: [limit-change:cooling-off]
+then:
+  outcome: "AWAITING_ACTIVATION before 24h, ACTIVE at 24h"
+  note: >
+    Rule 6: a large loosening activates COOLING_OFF_HOURS (default 24) after its final approval.
+    sup-1 requests raising QUARANTINE_EXPIRY_MINUTES (large: not priceable). Three approvers,
+    including comp-1 (COMPLIANCE) and one from a different team, bring it to AWAITING_ACTIVATION.
+    The clock moves without sleeping (MutableClock): at 23h59m past the final approval it is
+    still AWAITING_ACTIVATION; at exactly 24h it reads ACTIVE.
+steps:
+  - actor: sup-1
+    roles: [SUPERVISOR]
+    action: request
+    fields: {key: QUARANTINE_EXPIRY_MINUTES, newValue: "60", reason: "raise the quarantine expiry window (large loosening)", ref: r1}
+    expect: {httpStatus: 201, resultStatus: PENDING, requiredApprovals: 3}
+  - actor: sup-2
+    roles: [SUPERVISOR]
+    action: approve
+    fields: {ref: r1}
+    expect: {httpStatus: 200, resultStatus: PENDING}
+  - actor: comp-1
+    roles: [COMPLIANCE]
+    action: approve
+    fields: {ref: r1}
+    expect: {httpStatus: 200, resultStatus: PENDING}
+  - actor: exec-1
+    roles: [EXECUTIVE]
+    action: approve
+    fields: {ref: r1}
+    expect: {httpStatus: 200, resultStatus: AWAITING_ACTIVATION}
+  - action: advance-clock
+    fields: {minutes: 1439}
+  - actor: sup-1
+    roles: [SUPERVISOR]
+    action: get
+    fields: {ref: r1}
+    expect: {httpStatus: 200, resultStatus: AWAITING_ACTIVATION}
+  - action: advance-clock
+    fields: {minutes: 1440}
+  - actor: sup-1
+    roles: [SUPERVISOR]
+    action: get
+    fields: {ref: r1}
+    expect: {httpStatus: 200, resultStatus: ACTIVE}

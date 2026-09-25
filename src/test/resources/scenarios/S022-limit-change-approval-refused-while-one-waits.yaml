@@ -1,0 +1,50 @@
+id: S022
+title: Approving an older, still-open request is refused once a later change on the same key is waiting
+kind: limit-change
+covers: [limit-change:one-waiting-change-per-key]
+then:
+  outcome: "409 on the older request's approval; it stays PENDING"
+  note: >
+    Rule 11's other half: the blocked request need not be created after the waiting one. sup-1
+    requests tightening QUARANTINE_EXPIRY_MINUTES to 20 (request A) while the setting is still 30,
+    so nothing stops it being created. Before anyone approves A, sup-2 requests loosening it to 60
+    (request B, non-priceable so always large: 3 approvals) and it is approved all the way to
+    AWAITING_ACTIVATION. Only then does sup-2 try to give A its one required approval -- refused
+    with 409, checked before any approval row is written, so A stays PENDING rather than jumping
+    straight to ACTIVE the way its single required approval would otherwise allow.
+steps:
+  - actor: sup-1
+    roles: [SUPERVISOR]
+    action: request
+    fields: {key: QUARANTINE_EXPIRY_MINUTES, newValue: "20", reason: "older tightening (request A), raised before the loosening", ref: r1}
+    expect: {httpStatus: 201, resultStatus: PENDING, requiredApprovals: 1}
+  - actor: sup-2
+    roles: [SUPERVISOR]
+    action: request
+    fields: {key: QUARANTINE_EXPIRY_MINUTES, newValue: "60", reason: "large loosening (request B), raised after A but approved first", ref: r2}
+    expect: {httpStatus: 201, resultStatus: PENDING, requiredApprovals: 3}
+  - actor: sup-1
+    roles: [SUPERVISOR]
+    action: approve
+    fields: {ref: r2}
+    expect: {httpStatus: 200, resultStatus: PENDING}
+  - actor: exec-1
+    roles: [EXECUTIVE]
+    action: approve
+    fields: {ref: r2}
+    expect: {httpStatus: 200, resultStatus: PENDING}
+  - actor: comp-1
+    roles: [COMPLIANCE]
+    action: approve
+    fields: {ref: r2}
+    expect: {httpStatus: 200, resultStatus: AWAITING_ACTIVATION}
+  - actor: sup-2
+    roles: [SUPERVISOR]
+    action: approve
+    fields: {ref: r1}
+    expect: {httpStatus: 409}
+  - actor: sup-1
+    roles: [SUPERVISOR]
+    action: get
+    fields: {ref: r1}
+    expect: {httpStatus: 200, resultStatus: PENDING}

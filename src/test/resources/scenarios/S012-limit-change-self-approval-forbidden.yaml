@@ -1,0 +1,20 @@
+id: S012
+title: A requester may not approve their own limit-change request
+kind: limit-change
+covers: [limit-change:self-approval]
+then:
+  outcome: "403, self-approval forbidden"
+  note: >
+    Rule 4: the requester can never approve their own request, no role skips this step. sup-1
+    tightens ISSUER_LIMIT_PCT (1 approval required) and then tries to approve it themself.
+steps:
+  - actor: sup-1
+    roles: [SUPERVISOR]
+    action: request
+    fields: {key: ISSUER_LIMIT_PCT, newValue: "4", reason: "tighten the issuer limit", ref: r1}
+    expect: {httpStatus: 201, resultStatus: PENDING, requiredApprovals: 1}
+  - actor: sup-1
+    roles: [SUPERVISOR]
+    action: approve
+    fields: {ref: r1}
+    expect: {httpStatus: 403}
