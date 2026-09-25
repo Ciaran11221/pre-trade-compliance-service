@@ -3,6 +3,7 @@ package io.github.ciaran11221.compliance.rules;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 
 import org.springframework.stereotype.Component;
@@ -59,7 +60,7 @@ public class DiversificationRule implements ComplianceRule {
 		BigDecimal measuredPct = overSumPost.multiply(HUNDRED).divide(totalAssets, 4, RoundingMode.HALF_UP);
 
 		if (overBucket && grew) {
-			String reason = String.format(
+			String reason = String.format(Locale.ROOT, 
 					"post-trade over-5%% issuer positions total $%,.2f (%s%% of fund assets), above the %s%% limit "
 							+ "and up from $%,.2f pre-trade, so this buy grows the over-limit group.",
 					overSumPost, measuredPct.stripTrailingZeros().toPlainString(),
@@ -67,7 +68,7 @@ public class DiversificationRule implements ComplianceRule {
 			return new RuleResult(name(), RuleOutcome.BLOCK, reason, measuredPct, bucketPct);
 		}
 
-		String reason = String.format(
+		String reason = String.format(Locale.ROOT, 
 				"post-trade over-5%% issuer positions total $%,.2f (%s%% of fund assets); either at or under the "
 						+ "%s%% limit, or unchanged from the $%,.2f pre-trade total, so the buy passes.",
 				overSumPost, measuredPct.stripTrailingZeros().toPlainString(),

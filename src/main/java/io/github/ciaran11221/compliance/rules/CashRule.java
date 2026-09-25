@@ -1,6 +1,7 @@
 package io.github.ciaran11221.compliance.rules;
 
 import java.math.BigDecimal;
+import java.util.Locale;
 
 import org.springframework.stereotype.Component;
 
@@ -37,7 +38,7 @@ public class CashRule implements ComplianceRule {
 		BigDecimal available = context.fund().cash().subtract(pendingBuyValue);
 
 		boolean blocked = orderValue.compareTo(available) > 0;
-		String reason = String.format(
+		String reason = String.format(Locale.ROOT, 
 				"order value $%,.2f %s the $%,.2f cash available (fund cash $%,.2f minus $%,.2f of pending buys).",
 				orderValue, blocked ? "exceeds" : "fits within", available, context.fund().cash(), pendingBuyValue);
 

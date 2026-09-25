@@ -2,6 +2,7 @@ package io.github.ciaran11221.compliance.rules;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.Locale;
 
 import org.springframework.stereotype.Component;
 
@@ -31,7 +32,7 @@ public class OrderSizeRule implements ComplianceRule {
 
 		BigDecimal measuredPct = quantity.multiply(HUNDRED).divide(avgDailyVolume, 4, RoundingMode.HALF_UP);
 
-		String reason = String.format(
+		String reason = String.format(Locale.ROOT, 
 				"order of %,d shares is %s%% of the %,d-share average daily volume, %s the %s%% threshold.",
 				context.order().quantity(), measuredPct.stripTrailingZeros().toPlainString(),
 				security.avgDailyVolume(), review ? "above" : "at or below",

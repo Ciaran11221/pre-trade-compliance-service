@@ -2,6 +2,7 @@ package io.github.ciaran11221.compliance.rules;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -45,6 +46,23 @@ class CashRuleTest {
 		RuleResult result = rule.evaluate(context(new BigDecimal("5000000"), List.of(), OrderContext.Side.BUY, 50_000L));
 
 		assertThat(result.outcome()).isEqualTo(RuleOutcome.PASS);
+	}
+
+	@Test
+	void reasonTextDoesNotDependOnTheServerLocale() {
+		// The reason is stored with the decision. The same decision must read the same on any
+		// server, so number formatting is fixed rather than taken from the default locale.
+		Locale original = Locale.getDefault();
+		try {
+			Locale.setDefault(Locale.GERMANY);
+			RuleResult result = rule
+				.evaluate(context(new BigDecimal("10000000"), List.of(), OrderContext.Side.BUY, 50_000L));
+
+			assertThat(result.reason()).contains("$5,000,000.00").contains("$10,000,000.00");
+		}
+		finally {
+			Locale.setDefault(original);
+		}
 	}
 
 	@Test
