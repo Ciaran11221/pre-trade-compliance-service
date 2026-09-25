@@ -1,0 +1,2 @@
+method,path,roles
+GET,/api/me,ANY
