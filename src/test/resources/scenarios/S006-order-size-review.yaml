@@ -1,0 +1,21 @@
+id: S006
+title: Order above 10 percent of average daily volume goes to review
+kind: rule
+covers: [rule:order-size]
+given:
+  settings: {}
+  fund: {code: HGF, totalAssets: "1000000000", cash: "100000000", diversified: true}
+  securities:
+    - {ticker: KSTL, price: "100", votingSharesOutstanding: 50000000, avgDailyVolume: 2000000}
+  holdings: []
+  restricted: []
+  pendingOrders: []
+when:
+  order: {side: BUY, ticker: KSTL, quantity: 250000}
+then:
+  outcome: REVIEW
+  rules: {order-size: REVIEW}
+  note: >
+    KSTL's average daily volume is 2,000,000 shares, so 10% of that is
+    200,000 shares. The order is 250,000 shares, above that threshold, so
+    it goes to REVIEW.
