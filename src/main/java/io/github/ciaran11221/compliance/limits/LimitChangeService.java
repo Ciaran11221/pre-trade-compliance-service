@@ -12,6 +12,7 @@ import java.util.TreeMap;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.ErrorResponseException;
 
 import tools.jackson.databind.ObjectMapper;
 
@@ -54,7 +55,13 @@ public class LimitChangeService {
 		this.objectMapper = objectMapper;
 	}
 
-	@Transactional
+	// noRollbackFor: rule 1 records a refused attempt (limit_change_refusal) even though the
+	// request itself is refused, and ErrorResponseException is an unchecked exception -- Spring's
+	// default rollback-on-any-RuntimeException would otherwise undo that insert the instant this
+	// method throws to report the refusal, silently discarding the very row the refusal exists to
+	// leave behind. The "nothing to change" branch throws the same exception type with nothing yet
+	// written, so telling Spring not to roll back on it there is a no-op, not a risk.
+	@Transactional(noRollbackFor = ErrorResponseException.class)
 	public LimitChangeView requestChange(String requesterId, LimitChangeRequestBody body) {
 		LimitKey key = parseKey(body.key());
 		Instant now = clock.instant();
@@ -107,10 +114,21 @@ public class LimitChangeService {
 			throw LimitChangeProblems.conflict("this request has been cancelled.");
 		}
 
-		BigDecimal activeValue = limitsRepository.activeLimits().get(LimitKey.valueOf(requestRow.settingKey()));
-		if (activeValue.compareTo(requestRow.oldValue()) != 0) {
-			throw LimitChangeProblems.conflict("stale: " + requestRow.settingKey() + " is now " + plain(activeValue)
-					+ ", not " + plain(requestRow.oldValue()) + " as this request assumed.");
+		// Rule 7 (stale) only means "some OTHER change moved the active value out from under this
+		// one" -- never this request's own activation. Skipping the check once this request has
+		// already activated is what lets a second, concurrent final approval (see
+		// LimitChangeConcurrentApprovalTest) succeed cleanly instead of being told the setting it
+		// itself just set is "not what this request assumed": without this guard, the first
+		// approver's insertSettingValue call (inside maybeActivate, below) makes the active value
+		// diverge from requestRow.oldValue() the instant it commits, and the second approver --
+		// unblocked from the same row lock right after -- would see that as staleness even though
+		// nothing but this request's own approvals produced it.
+		if (limitChangeRepository.findActivation(id).isEmpty()) {
+			BigDecimal activeValue = limitsRepository.activeLimits().get(LimitKey.valueOf(requestRow.settingKey()));
+			if (activeValue.compareTo(requestRow.oldValue()) != 0) {
+				throw LimitChangeProblems.conflict("stale: " + requestRow.settingKey() + " is now "
+						+ plain(activeValue) + ", not " + plain(requestRow.oldValue()) + " as this request assumed.");
+			}
 		}
 
 		if (approverId.equals(requestRow.requestedBy())) {
