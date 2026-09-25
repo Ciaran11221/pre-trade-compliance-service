@@ -8,7 +8,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Meta-test: proves RepoMapTest's package check actually bites. No real source directories or
- * CLAUDE.md edits here on purpose -- PackageSetComparison is a plain function of two sets.
+ * CLAUDE.md edits here on purpose; PackageSetComparison is a plain function of two sets.
  */
 class PackageSetComparisonTest {
 

@@ -8,7 +8,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Meta-test: proves ScenarioCoverageTest actually bites. No ServiceLoader and no real corpus
- * here on purpose -- ScenarioCoverageComparison is a plain function of two sets, so a required
+ * here on purpose; ScenarioCoverageComparison is a plain function of two sets, so a required
  * tag with no scenario can be shown to fail the comparison without a real RequiredCoverage
  * provider existing anywhere in the codebase.
  */

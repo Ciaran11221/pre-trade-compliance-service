@@ -7,7 +7,7 @@ import java.util.Set;
  * Compares tags that RequiredCoverage providers say must be covered against tags the scenario
  * corpus actually covers. Kept free of ServiceLoader and file I/O (plain sets in, plain set out)
  * so ScenarioCoverageComparisonTest can prove it catches a missing tag without a real provider or
- * a real corpus -- same shape as RouteSetComparison for the route matrix.
+ * a real corpus; same shape as RouteSetComparison for the route matrix.
  */
 public record ScenarioCoverageComparison(Set<String> missing) {
 

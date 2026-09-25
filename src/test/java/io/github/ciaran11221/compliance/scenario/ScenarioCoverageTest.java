@@ -10,10 +10,8 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Fails the build if any RequiredCoverage provider names a tag no scenario covers. There is no
- * provider registered anywhere yet (no compliance rule exists in this milestone), so
- * ServiceLoader finds none, the required set is empty, and this passes trivially -- exactly as
- * it should until the first rule engine milestone adds one.
+ * Fails the build if any RequiredCoverage provider names a tag that no scenario covers. With no
+ * provider registered, the required set is empty and the test passes.
  */
 class ScenarioCoverageTest {
 

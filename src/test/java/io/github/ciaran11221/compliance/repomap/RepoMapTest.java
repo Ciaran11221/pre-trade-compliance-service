@@ -14,7 +14,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Walks src/main/java/io/github/ciaran11221/compliance and checks every package directory that
  * holds a .java file is named in CLAUDE.md's package table, and every path CLAUDE.md's path
  * table names actually exists on disk. Reads relative paths, same as ScenarioIndexTest and
- * RouteAccessCsv's classpath reads -- Maven Surefire's working directory is the module root.
+ * RouteAccessCsv's classpath reads; Maven Surefire's working directory is the module root.
  */
 class RepoMapTest {
 

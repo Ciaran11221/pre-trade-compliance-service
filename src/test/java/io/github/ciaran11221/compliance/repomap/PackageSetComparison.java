@@ -7,7 +7,7 @@ import java.util.Set;
  * Compares packages actually on disk under src/main/java against the packages CLAUDE.md's table
  * documents. Kept free of file I/O (plain sets in, plain sets out) so
  * PackageSetComparisonTest can prove it catches a missing or stale entry without touching real
- * source directories -- same shape as RouteSetComparison for the route matrix.
+ * source directories; same shape as RouteSetComparison for the route matrix.
  */
 public record PackageSetComparison(Set<String> missingFromDoc, Set<String> extraInDoc) {
 

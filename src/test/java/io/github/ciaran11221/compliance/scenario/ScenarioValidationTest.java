@@ -12,7 +12,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Proves ScenarioValidation actually catches each rule it claims to, on synthetic scenarios built
- * in memory -- no real corpus file is ever broken to prove this, same reasoning as
+ * in memory; no real corpus file is ever broken to prove this, same reasoning as
  * RouteSetComparisonTest not leaving an unguarded controller in the codebase.
  */
 class ScenarioValidationTest {

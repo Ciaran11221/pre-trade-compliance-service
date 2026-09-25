@@ -14,7 +14,7 @@ import tools.jackson.dataformat.yaml.YAMLMapper;
 /**
  * Reads every scenario in src/test/resources/scenarios/ and validates the corpus as a whole.
  * Uses Spring's PathMatchingResourcePatternResolver rather than a plain File walk, so this works
- * the same whether the test runs from Maven, an IDE, or (later) a packaged jar -- classpath
+ * the same whether the test runs from Maven, an IDE, or (later) a packaged jar; classpath
  * globbing for "scenarios/*.yaml" is exactly the case it exists for.
  */
 public final class ScenarioLoader {
@@ -58,7 +58,7 @@ public final class ScenarioLoader {
 
 	/**
 	 * Parses every scenario file and validates the corpus, sorted by id. Throws, naming every
-	 * problem file, if validation fails -- see ScenarioValidation for the rules.
+	 * problem file, if validation fails; see ScenarioValidation for the rules.
 	 */
 	public static List<Scenario> loadAllValidated() {
 		List<Loaded> loaded = loadAll();
