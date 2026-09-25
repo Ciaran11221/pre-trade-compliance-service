@@ -1,0 +1,12 @@
+spring:
+  application:
+    name: pre-trade-compliance-service
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true
