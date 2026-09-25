@@ -104,6 +104,13 @@
 			<artifactId>testcontainers-junit-jupiter</artifactId>
 			<scope>test</scope>
 		</dependency>
+		<!-- Parses the scenario corpus (src/test/resources/scenarios/*.yaml). Version comes from
+		     the tools.jackson jackson-bom that spring-boot-dependencies already imports. -->
+		<dependency>
+			<groupId>tools.jackson.dataformat</groupId>
+			<artifactId>jackson-dataformat-yaml</artifactId>
+			<scope>test</scope>
+		</dependency>
 	</dependencies>
 
 	<build>

@@ -1,0 +1,30 @@
+id: S001
+title: Fund at 20.5 percent in over-5% positions passes
+kind: rule
+covers: [rule:diversification]
+given:
+  settings: {}
+  fund: {code: HGF, totalAssets: "1000000000", cash: "100000000", diversified: true}
+  securities:
+    - {ticker: KSTL, price: "100", votingSharesOutstanding: 50000000, avgDailyVolume: 2000000}
+    - {ticker: NRTH, price: "150", votingSharesOutstanding: 40000000, avgDailyVolume: 1500000}
+    - {ticker: VLCN, price: "250", votingSharesOutstanding: 30000000, avgDailyVolume: 1200000}
+  holdings:
+    - {ticker: KSTL, quantity: 450000}
+    - {ticker: NRTH, quantity: 500000}
+    - {ticker: VLCN, quantity: 300000}
+  restricted: []
+  pendingOrders: []
+when:
+  order: {side: BUY, ticker: KSTL, quantity: 100000}
+then:
+  outcome: PASS
+  rules: {diversification: PASS}
+  note: >
+    KSTL 450,000 sh x $100 = $45,000,000, which is 4.5% of $1,000,000,000, under 5%.
+    NRTH 500,000 sh x $150 = $75,000,000 and VLCN 300,000 sh x $250 = $75,000,000,
+    both already over 5%, summing to $150,000,000 in the over-5% group.
+    The BUY is 100,000 KSTL sh x $100 = $10,000,000, taking KSTL to $55,000,000,
+    which is 5.5% of $1,000,000,000, so KSTL crosses 5% and joins the group.
+    New over-5% total = $150,000,000 + $55,000,000 = $205,000,000, which is 20.5%
+    of $1,000,000,000, at or under the 25% limit, so PASS.

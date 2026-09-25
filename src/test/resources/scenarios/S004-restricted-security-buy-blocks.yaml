@@ -1,0 +1,21 @@
+id: S004
+title: Buy of a restricted security blocks
+kind: rule
+covers: [rule:restricted-list]
+given:
+  settings: {}
+  fund: {code: HGF, totalAssets: "1000000000", cash: "100000000", diversified: true}
+  securities:
+    - {ticker: ZPHR, price: "50", votingSharesOutstanding: 20000000, avgDailyVolume: 500000}
+  holdings: []
+  restricted: [ZPHR]
+  pendingOrders: []
+when:
+  order: {side: BUY, ticker: ZPHR, quantity: 10000}
+then:
+  outcome: BLOCK
+  rules: {restricted-list: BLOCK}
+  note: >
+    ZPHR is on the restricted list. A BUY of any quantity of a restricted
+    security blocks regardless of price or position size, so this scenario
+    BLOCKs before diversification, cash or order-size are even considered.

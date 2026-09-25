@@ -21,6 +21,7 @@ Checks a fund's buy and sell orders before they reach a broker: the restricted l
 | `src/main/resources/db/seed/R__seed.sql` | Fictional demo funds, securities and staff. Loaded by the `local` and `test` profiles only. |
 | `src/test/resources/route-access.csv` | Which roles may call which route. Every new route needs a row, or the build fails. |
 | `src/test/resources/scenarios/` | The scenario corpus: one YAML file per scenario. |
+| `src/test/java/io/github/ciaran11221/compliance/scenario/` | Scenario records, the loader, validation, the index generator, and RequiredCoverage (how a later rule provider plugs into ScenarioCoverageTest). |
 | `docs/SCENARIOS.md` | Generated index of the scenario corpus. Never edit by hand. |
 | `docs/WORKLOG.md` | One row per merged pull request: who wrote it, who reviewed it, test counts. |
 

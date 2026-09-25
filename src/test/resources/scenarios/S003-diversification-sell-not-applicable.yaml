@@ -1,0 +1,23 @@
+id: S003
+title: Sell of an over-5% position is not applicable to diversification
+kind: rule
+covers: [rule:diversification]
+given:
+  settings: {}
+  fund: {code: CBF, totalAssets: "1000000000", cash: "100000000", diversified: true}
+  securities:
+    - {ticker: KSTL, price: "100", votingSharesOutstanding: 50000000, avgDailyVolume: 2000000}
+  holdings:
+    - {ticker: KSTL, quantity: 600000}
+  restricted: []
+  pendingOrders: []
+when:
+  order: {side: SELL, ticker: KSTL, quantity: 100000}
+then:
+  outcome: PASS
+  rules: {diversification: NOT_APPLICABLE}
+  note: >
+    KSTL 600,000 sh x $100 = $60,000,000, which is 6% of $1,000,000,000, already
+    over 5%. The diversification rule only limits a BUY that grows an over-5%
+    position further, so a SELL of 100,000 KSTL is NOT_APPLICABLE to it and the
+    order PASSes.
