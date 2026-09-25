@@ -1,10 +1,11 @@
--- Fictional demo data for local development and tests. Versioned (V1000, not
--- repeatable R__) because this data is fixed and does not change between
--- runs -- a repeatable migration is for content that gets edited and
--- reapplied, which this is not. The V1000 number leaves headroom below it
--- for real schema/config migrations (V4, V5, ...) to land without colliding
--- with this file, since it lives in a separate Flyway location and Flyway
--- orders by version across all locations combined.
+-- Fictional demo data for local development and tests, loaded only by the
+-- local and test profiles.
+--
+-- Repeatable (R__) rather than versioned: Flyway runs repeatable migrations
+-- after every versioned one, so a new V-number schema migration never lands
+-- "below" data that is already applied. A versioned seed (tried as V1000)
+-- made Flyway refuse to start on any existing local database as soon as a V4
+-- was added. Every insert is ON CONFLICT DO NOTHING so a re-run is harmless.
 
 -- Securities. KSTL plus five more fictional tickers. voting_shares_outstanding
 -- is set well above 10x every seeded holding below, so no holding gets near
@@ -15,17 +16,20 @@ INSERT INTO security (ticker, name, issuer_name, price, voting_shares_outstandin
     ('VLCN', 'Volcane Energy Group', 'Volcane Energy Group', 250.0000, 30000000, 1200000),
     ('TDRA', 'Tidewrack Logistics', 'Tidewrack Logistics', 200.0000, 45000000, 1800000),
     ('QSTN', 'Questane Semiconductor', 'Questane Semiconductor', 460.0000, 25000000, 900000),
-    ('ZPHR', 'Zephyrine Holdings', 'Zephyrine Holdings', 50.0000, 20000000, 500000);
+    ('ZPHR', 'Zephyrine Holdings', 'Zephyrine Holdings', 50.0000, 20000000, 500000)
+ON CONFLICT DO NOTHING;
 
 -- One security on the restricted list.
 INSERT INTO restricted_security (security_id, reason, added_at)
 SELECT id, 'Pending litigation disclosure', '2026-01-15T00:00:00Z'
-FROM security WHERE ticker = 'ZPHR';
+FROM security WHERE ticker = 'ZPHR'
+ON CONFLICT DO NOTHING;
 
 -- Fund HGF "Harbour Growth Fund".
 -- total_assets 1,000,000,000.00, cash 100,000,000.00, diversified.
 INSERT INTO fund (code, name, total_assets, cash, diversified) VALUES
-    ('HGF', 'Harbour Growth Fund', 1000000000.0000, 100000000.0000, true);
+    ('HGF', 'Harbour Growth Fund', 1000000000.0000, 100000000.0000, true)
+ON CONFLICT DO NOTHING;
 
 -- HGF holdings:
 --   KSTL   450,000 sh x $100.00 = $45,000,000  (worth $45M, as required)
@@ -37,12 +41,14 @@ SELECT f.id, s.id, q.quantity
 FROM (VALUES ('HGF', 'KSTL', 450000::bigint), ('HGF', 'NRTH', 500000::bigint), ('HGF', 'VLCN', 300000::bigint))
     AS q(fund_code, ticker, quantity)
 JOIN fund f ON f.code = q.fund_code
-JOIN security s ON s.ticker = q.ticker;
+JOIN security s ON s.ticker = q.ticker
+ON CONFLICT DO NOTHING;
 
 -- Fund WVF "Westshore Value Fund".
 -- total_assets 1,000,000,000.00, cash 100,000,000.00, diversified.
 INSERT INTO fund (code, name, total_assets, cash, diversified) VALUES
-    ('WVF', 'Westshore Value Fund', 1000000000.0000, 100000000.0000, true);
+    ('WVF', 'Westshore Value Fund', 1000000000.0000, 100000000.0000, true)
+ON CONFLICT DO NOTHING;
 
 -- WVF holdings:
 --   KSTL   450,000 sh x $100.00 = $45,000,000  (worth $45M, as required)
@@ -54,27 +60,32 @@ SELECT f.id, s.id, q.quantity
 FROM (VALUES ('WVF', 'KSTL', 450000::bigint), ('WVF', 'TDRA', 575000::bigint), ('WVF', 'QSTN', 250000::bigint))
     AS q(fund_code, ticker, quantity)
 JOIN fund f ON f.code = q.fund_code
-JOIN security s ON s.ticker = q.ticker;
+JOIN security s ON s.ticker = q.ticker
+ON CONFLICT DO NOTHING;
 
 -- Fund CBF "Corrib Balanced Fund".
 -- total_assets 1,000,000,000.00, diversified.
 INSERT INTO fund (code, name, total_assets, cash, diversified) VALUES
-    ('CBF', 'Corrib Balanced Fund', 1000000000.0000, 100000000.0000, true);
+    ('CBF', 'Corrib Balanced Fund', 1000000000.0000, 100000000.0000, true)
+ON CONFLICT DO NOTHING;
 
 -- CBF holdings:
 --   KSTL   600,000 sh x $100.00 = $60,000,000  (6% of $1B, as required)
 INSERT INTO holding (fund_id, security_id, quantity)
 SELECT f.id, s.id, 600000
 FROM fund f, security s
-WHERE f.code = 'CBF' AND s.ticker = 'KSTL';
+WHERE f.code = 'CBF' AND s.ticker = 'KSTL'
+ON CONFLICT DO NOTHING;
 
 -- Staff. anne's backup is sup-2. Nobody is out of office.
 INSERT INTO staff (id, name, team, backup_staff_id, out_of_office_from, out_of_office_until) VALUES
     ('sup-1', 'Siobhan Nagle', 'desk-a', NULL, NULL, NULL),
     ('sup-2', 'Malachy Ferris', 'desk-b', NULL, NULL, NULL),
     ('comp-1', 'Orla Whitfield', 'compliance', NULL, NULL, NULL),
-    ('exec-1', 'Declan Yorath', 'executive', NULL, NULL, NULL);
+    ('exec-1', 'Declan Yorath', 'executive', NULL, NULL, NULL)
+ON CONFLICT DO NOTHING;
 
 INSERT INTO staff (id, name, team, backup_staff_id, out_of_office_from, out_of_office_until) VALUES
     ('anne', 'Anne Colquhoun', 'desk-a', 'sup-2', NULL, NULL),
-    ('brian', 'Brian Meath', 'desk-b', NULL, NULL, NULL);
+    ('brian', 'Brian Meath', 'desk-b', NULL, NULL, NULL)
+ON CONFLICT DO NOTHING;
