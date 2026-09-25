@@ -1,0 +1,25 @@
+id: S009
+title: Fund already 27 percent over-limit buys more of the same over-5% issuer, blocks
+kind: rule
+covers: [rule:diversification]
+given:
+  settings: {}
+  fund: {code: PMF, totalAssets: "1000000000", cash: "50000000", diversified: true}
+  securities:
+    - {ticker: PLUTO, issuer: Plutarch Resources, price: "300", votingSharesOutstanding: 50000000, avgDailyVolume: 1000000}
+  holdings:
+    - {ticker: PLUTO, quantity: 900000}
+  restricted: []
+  pendingOrders: []
+when:
+  order: {side: BUY, ticker: PLUTO, quantity: 50000}
+then:
+  outcome: BLOCK
+  rules: {diversification: BLOCK}
+  note: >
+    PLUTO 900,000 sh x $300 = $270,000,000, 27% of $1,000,000,000, already over the 25% bucket
+    limit before this order, the same starting point as S008. Unlike S008, this BUY adds to that
+    same over-5% issuer instead of a different one: 50,000 more PLUTO sh x $300 = $15,000,000,
+    taking the holding to 950,000 sh = $285,000,000, 28.5% of assets. Post-trade over-5% total is
+    $285,000,000 (28.5%), over the 25% limit AND up from the $270,000,000 (27%) pre-trade total --
+    this buy grows the over-limit group, unlike S008's buy of an unrelated issuer, so BLOCK.

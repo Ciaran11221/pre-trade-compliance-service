@@ -14,6 +14,7 @@ Checks a fund's buy and sell orders before they reach a broker: the restricted l
 | `me` | `GET /api/me`: who the caller's token says they are |
 | `reference` | Funds, securities, holdings, staff: entities and repositories |
 | `security` | Token checking, deny-by-default rules, known-staff check, 401/403 bodies |
+| `rules` | The compliance rules (restricted list, diversification, cash, order size), the engine that combines their results, and the firm-limits read path |
 
 | Path | Holds |
 |---|---|

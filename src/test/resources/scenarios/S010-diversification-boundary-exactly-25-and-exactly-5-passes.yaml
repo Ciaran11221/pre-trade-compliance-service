@@ -1,0 +1,27 @@
+id: S010
+title: Buy lands the bucket at exactly 25 percent and the bought issuer at exactly 5 percent, both pass
+kind: rule
+covers: [rule:diversification]
+given:
+  settings: {}
+  fund: {code: BDF, totalAssets: "1000000000", cash: "100000000", diversified: true}
+  securities:
+    - {ticker: AXIOM, issuer: Axiom Networks, price: "250", votingSharesOutstanding: 200000000, avgDailyVolume: 5000000}
+    - {ticker: FENN, issuer: Fennrock Holdings, price: "100", votingSharesOutstanding: 10000000, avgDailyVolume: 10000000}
+  holdings:
+    - {ticker: AXIOM, quantity: 1000000}
+  restricted: []
+  pendingOrders: []
+when:
+  order: {side: BUY, ticker: FENN, quantity: 500000}
+then:
+  outcome: PASS
+  rules: {diversification: PASS}
+  note: >
+    AXIOM 1,000,000 sh x $250 = $250,000,000, exactly 25% of $1,000,000,000, already over 5% alone
+    and equal to the 25% bucket limit pre-trade (no pending orders, FENN not held pre-trade).
+    The BUY is 500,000 FENN sh x $100 = $50,000,000, exactly 5% of assets, landing FENN exactly
+    at the 5% issuer threshold, which is NOT over since over is strictly greater than 5%, so FENN
+    contributes nothing to the over-5% total. Post-trade over-5% total is still $250,000,000,
+    exactly 25% of assets, NOT strictly greater than the 25% bucket limit, so PASS: both the
+    issuer-level 5% boundary and the bucket-level 25% boundary are hit exactly by this one order.

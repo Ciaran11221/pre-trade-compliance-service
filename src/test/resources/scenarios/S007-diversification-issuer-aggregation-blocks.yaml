@@ -1,0 +1,34 @@
+id: S007
+title: Two securities of one issuer aggregate to block even though neither alone is over 5%
+kind: rule
+covers: [rule:diversification]
+given:
+  settings: {}
+  fund: {code: EGF, totalAssets: "1000000000", cash: "50000000", diversified: true}
+  securities:
+    - {ticker: GRVN, issuer: Granvyle Corp, price: "200", votingSharesOutstanding: 100000000, avgDailyVolume: 2000000}
+    - {ticker: EMBA, issuer: Emberlyn Group, price: "100", votingSharesOutstanding: 50000000, avgDailyVolume: 5000000}
+    - {ticker: EMBB, issuer: Emberlyn Group, price: "150", votingSharesOutstanding: 50000000, avgDailyVolume: 1500000}
+  holdings:
+    - {ticker: GRVN, quantity: 1000000}
+    - {ticker: EMBA, quantity: 200000}
+    - {ticker: EMBB, quantity: 200000}
+  restricted: []
+  pendingOrders: []
+when:
+  order: {side: BUY, ticker: EMBA, quantity: 100000}
+then:
+  outcome: BLOCK
+  rules: {diversification: BLOCK}
+  note: >
+    GRVN 1,000,000 sh x $200 = $200,000,000, 20% of $1,000,000,000, already over 5% alone.
+    EMBA 200,000 sh x $100 = $20,000,000 (2%) and EMBB 200,000 sh x $150 = $30,000,000 (3%) are
+    two securities of the SAME fictional issuer, Emberlyn Group; summed pre-trade that issuer is
+    $50,000,000, exactly 5% of assets, not over (over is strictly greater than the limit).
+    The BUY is 100,000 EMBA sh x $100 = $10,000,000, taking EMBA to 300,000 sh = $30,000,000 (3%),
+    still under 5% BY ITSELF. But Emberlyn Group's issuer total is now $30,000,000 + $30,000,000 =
+    $60,000,000, 6% of assets, over 5% once aggregated by issuer.
+    New over-5% total = $200,000,000 (GRVN) + $60,000,000 (Emberlyn Group) = $260,000,000, 26% of
+    assets, over the 25% bucket limit and up from $200,000,000 (20%) pre-trade, so BLOCK.
+    Without aggregating by issuer, EMBA (3%) and EMBB (3%) would each stay under 5% on their own,
+    the over-5% total would just be GRVN's $200,000,000 (20%), at or under 25%, and this would PASS.
