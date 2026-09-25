@@ -12,11 +12,11 @@ import org.springframework.context.annotation.Configuration;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Requirement 1, proven at the Spring context level rather than as a plain unit test (see
- * JwtSigningKeyTest for that): the application must fail to start without
- * compliance.security.jwt-secret set. Uses ApplicationContextRunner with a minimal nested
- * configuration -- not the full application -- so this does not need a database or Testcontainers;
- * only the one bean under test (and its real @Value-driven property resolution) is in play.
+ * Proven at the Spring context level rather than as a plain unit test (see JwtSigningKeyTest for
+ * that): the application must fail to start without compliance.security.jwt-secret set. Uses
+ * ApplicationContextRunner with a minimal nested configuration -- not the full application -- so
+ * this does not need a database or Testcontainers; only the one bean under test (and its real
+ * @Value-driven property resolution) is in play.
  */
 class NoDefaultJwtSecretTest {
 
@@ -53,7 +53,8 @@ class NoDefaultJwtSecretTest {
 
 	@Test
 	void contextStartsWithARealSecret() {
-		contextRunner.withPropertyValues("compliance.security.jwt-secret=a-real-secret-value")
+		// 32 ASCII bytes: the HS256 minimum (see SecurityConfig.MIN_SECRET_BYTES).
+		contextRunner.withPropertyValues("compliance.security.jwt-secret=" + "a".repeat(32))
 			.run(context -> assertThat(context).hasNotFailed());
 	}
 

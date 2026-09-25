@@ -13,10 +13,10 @@ import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
 
 /**
- * Test scope only -- see requirement 8 and the jar check in .github/workflows/ci.yml, which fails
- * the build if this class ends up in the runtime jar. Signs a token with the local-dev secret
- * (must match application-local.yml's compliance.security.jwt-secret) so a developer running the
- * service locally can call it without a real identity provider.
+ * Test scope only -- see the jar check in .github/workflows/ci.yml, which fails the build if this
+ * class ends up in the runtime jar. Signs a token with the local-dev secret (must match
+ * application-local.yml's compliance.security.jwt-secret) so a developer running the service
+ * locally can call it without a real identity provider.
  *
  * Usage:
  *   ./mvnw -q test-compile exec:java -Dexec.mainClass=io.github.ciaran11221.compliance.support.TokenTool \

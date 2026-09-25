@@ -20,8 +20,8 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtGra
 import org.springframework.security.web.SecurityFilterChain;
 
 /**
- * Resource-server security for this service (milestone M3): every request carries a signed JWT
- * or it is rejected, deny by default, checked here once rather than by each controller. See
+ * Resource-server security for this service: every request carries a signed JWT or it is
+ * rejected, deny by default, checked here once rather than by each controller. See
  * KnownStaffAuthorizationManager for the "known staff only" rule and the ProblemDetail* classes
  * for the 401/403 response bodies.
  */
@@ -30,11 +30,18 @@ import org.springframework.security.web.SecurityFilterChain;
 @EnableMethodSecurity
 public class SecurityConfig {
 
+	// RFC 7518 section 3.2: HS256 needs a key of at least 256 bits. Nimbus enforces this itself
+	// when it builds the verifier, but only once a request actually needs verifying -- checking it
+	// here instead means a too-short secret fails at startup with a clear reason, rather than
+	// starting cleanly and then rejecting every request with a signature error that has nothing to
+	// do with the real cause.
+	private static final int MIN_SECRET_BYTES = 32;
+
 	/**
-	 * Requirement 1: no default secret anywhere in application.yml. The property resolves to an
-	 * empty string when JWT_SECRET is not set, and an empty string is treated the same as a
-	 * missing one -- this bean method fails, which fails the whole application context, which is
-	 * the "clear message on startup" check. See JwtSigningKeyTest and NoDefaultJwtSecretTest.
+	 * No default secret anywhere in application.yml. The property resolves to an empty string when
+	 * JWT_SECRET is not set, and an empty string is treated the same as a missing one -- this bean
+	 * method fails, which fails the whole application context, which is the "clear message on
+	 * startup" check. See JwtSigningKeyTest and NoDefaultJwtSecretTest.
 	 */
 	@Bean
 	SecretKey jwtSigningKey(@Value("${compliance.security.jwt-secret:}") String secret) {
@@ -43,7 +50,12 @@ public class SecurityConfig {
 					"compliance.security.jwt-secret is not set (env JWT_SECRET). This service will not "
 							+ "start without a signing secret -- see application-local.yml for a dev-only example.");
 		}
-		return new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
+		byte[] secretBytes = secret.getBytes(StandardCharsets.UTF_8);
+		if (secretBytes.length < MIN_SECRET_BYTES) {
+			throw new IllegalStateException("compliance.security.jwt-secret is " + secretBytes.length
+					+ " bytes; HS256 needs at least " + MIN_SECRET_BYTES + " bytes (256 bits). Use a longer secret.");
+		}
+		return new SecretKeySpec(secretBytes, "HmacSHA256");
 	}
 
 	@Bean
@@ -52,10 +64,9 @@ public class SecurityConfig {
 	}
 
 	/**
-	 * Requirement 2: "roles" claim -> ROLE_<name> authorities. A role name nothing checks for
-	 * (a typo, a role from a future release) becomes an authority that simply matches no
-	 * @PreAuthorize expression -- ignored, not an error. Nothing here validates the claim against
-	 * a known role list.
+	 * "roles" claim -> ROLE_<name> authorities. A role name nothing checks for (a typo, a role from
+	 * a future release) becomes an authority that simply matches no @PreAuthorize expression --
+	 * ignored, not an error. Nothing here validates the claim against a known role list.
 	 */
 	@Bean
 	JwtAuthenticationConverter jwtAuthenticationConverter() {
@@ -80,14 +91,14 @@ public class SecurityConfig {
 			.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 			.authorizeHttpRequests(auth -> auth
 				.requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
-				// Requirement 3 (deny by default) + requirement 4 (known staff only, centrally):
-				// every other route needs a valid, signed token AND a sub that is a real member of
-				// staff. Per-route ROLE checks then live only in @PreAuthorize on each handler.
+				// Deny by default: every other route needs a valid, signed token AND a sub that
+				// is a real member of staff, checked centrally here rather than per controller.
+				// Per-route ROLE checks then live only in @PreAuthorize on each handler.
 				.anyRequest().access(knownStaffAuthorizationManager))
 			// oauth2ResourceServer() registers its own default entry point/handler (the
 			// WWW-Authenticate-header, empty-body kind) scoped to bearer-token requests, which
 			// otherwise takes precedence over the plain exceptionHandling() ones below -- set here
-			// too so every 401/403 gets the same ProblemDetail body (requirement 7).
+			// too so every 401/403 gets the same ProblemDetail body.
 			.oauth2ResourceServer(oauth2 -> oauth2
 				.jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter))
 				.authenticationEntryPoint(authenticationEntryPoint)

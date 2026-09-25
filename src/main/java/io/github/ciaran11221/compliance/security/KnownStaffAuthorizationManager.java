@@ -14,10 +14,10 @@ import org.springframework.stereotype.Component;
 import io.github.ciaran11221.compliance.reference.StaffRepository;
 
 /**
- * Requirement 4: a correctly signed token can still name a "sub" that is not a real member of
- * staff. That gets checked here, once, for every request that reaches it -- not by each
- * controller re-deriving the same rule -- and reported as 403 with the reason "unknown staff
- * member", not a generic access-denied message.
+ * A correctly signed token can still name a "sub" that is not a real member of staff. That gets
+ * checked here, once, for every request that reaches it -- not by each controller re-deriving the
+ * same rule -- and reported as 403 with the reason "unknown staff member", not a generic
+ * access-denied message.
  */
 @Component
 public class KnownStaffAuthorizationManager implements AuthorizationManager<RequestAuthorizationContext> {
@@ -37,9 +37,9 @@ public class KnownStaffAuthorizationManager implements AuthorizationManager<Requ
 		}
 		if (!staffRepository.existsById(jwtAuthentication.getToken().getSubject())) {
 			// A real, signed token with a sub nothing in the staff table recognises -- reported
-			// with this exact reason (requirement 4), not AuthorizationFilter's generic
-			// "Access Denied" message. AuthorizationFilter calls this method directly (not the
-			// verify() default method), so the message has to be thrown from here.
+			// with this exact reason, not AuthorizationFilter's generic "Access Denied" message.
+			// AuthorizationFilter calls this method directly (not the verify() default method),
+			// so the message has to be thrown from here.
 			throw new AccessDeniedException("unknown staff member");
 		}
 		return new AuthorizationDecision(true);

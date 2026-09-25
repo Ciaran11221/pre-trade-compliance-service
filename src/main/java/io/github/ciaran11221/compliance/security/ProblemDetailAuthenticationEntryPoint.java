@@ -13,9 +13,9 @@ import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.stereotype.Component;
 
 /**
- * Requirement 7: no token, a bad signature, an expired token or a malformed header all reach here
- * and all get the same RFC 7807 body -- title, status, detail -- as application/problem+json. The
- * token itself is never echoed back.
+ * No token, a bad signature, an expired token or a malformed header all reach here and all get
+ * the same RFC 7807 body -- title, status, detail -- as application/problem+json. The token itself
+ * is never echoed back.
  */
 @Component
 public class ProblemDetailAuthenticationEntryPoint implements AuthenticationEntryPoint {

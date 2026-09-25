@@ -6,8 +6,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * A single injectable Clock, so "out of office right now" (requirement 6, see MeController) can
- * be tested against a fixed instant instead of the real wall clock.
+ * A single injectable Clock, so "out of office right now" (see MeController) can be tested
+ * against a fixed instant instead of the real wall clock.
  */
 @Configuration(proxyBeanMethods = false)
 public class ClockConfig {

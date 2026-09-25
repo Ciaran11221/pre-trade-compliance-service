@@ -21,8 +21,9 @@ import io.github.ciaran11221.compliance.support.TokenTool;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * 401/403 behaviour (requirement 7), the known-staff-only 403 (requirement 4), /api/me
- * (requirement 6) and health staying public (requirement 3).
+ * 401/403 behaviour, the known-staff-only 403, /api/me itself, and health staying public.
+ * anneWithTraderGetsHerOwnDetails is also the end-to-end check that a token signed with the
+ * configured secret is accepted.
  */
 @SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT)
 @Import(TestcontainersConfig.class)

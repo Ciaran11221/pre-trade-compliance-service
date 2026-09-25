@@ -16,9 +16,9 @@ import io.github.ciaran11221.compliance.reference.Staff;
 import io.github.ciaran11221.compliance.reference.StaffRepository;
 
 /**
- * Requirement 6: the first route in the route-access matrix (see route-access.csv). Any
- * authenticated role may call it -- KnownStaffAuthorizationManager has already turned away an
- * unrecognised staff id before a request gets here.
+ * The first route in the route-access matrix (see route-access.csv). Any authenticated role may
+ * call it -- KnownStaffAuthorizationManager has already turned away an unrecognised staff id
+ * before a request gets here.
  */
 @RestController
 public class MeController {

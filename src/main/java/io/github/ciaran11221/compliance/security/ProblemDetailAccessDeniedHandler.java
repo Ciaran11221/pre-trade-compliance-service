@@ -13,10 +13,10 @@ import org.springframework.security.web.access.AccessDeniedHandler;
 import org.springframework.stereotype.Component;
 
 /**
- * Requirement 7: every 403 -- an unknown staff sub (requirement 4) or a role a @PreAuthorize
- * expression rejects -- gets the same RFC 7807 body, as application/problem+json. The exception
- * message becomes the ProblemDetail detail, which is how "unknown staff member" (requirement 4)
- * reaches the response; nothing here ever echoes the token.
+ * Every 403 -- an unknown staff sub or a role a @PreAuthorize expression rejects -- gets the same
+ * RFC 7807 body, as application/problem+json. The exception message becomes the ProblemDetail
+ * detail, which is how "unknown staff member" reaches the response; nothing here ever echoes the
+ * token.
  */
 @Component
 public class ProblemDetailAccessDeniedHandler implements AccessDeniedHandler {
