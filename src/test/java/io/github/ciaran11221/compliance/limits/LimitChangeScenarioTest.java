@@ -68,9 +68,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  * "advance-clock" moves the shared MutableClock to FIXED_START plus fields.minutes, with no
  * sleep. "get" (an addition beyond request/approve/cancel/advance-clock, since Scenario.Step.action
  * is a plain unchecked String) reads a request's current view with no side effect, which is what
- * the cooling-off scenario needs to check status without approving twice. A "ref" field scopes an
- * action to one of possibly several requests a scenario creates (see the stale and hides-breach
- * corpus); omitted, it defaults to "r1".
+ * the cooling-off scenario needs to check status without approving twice. "get-limits" (rule 11's
+ * one-waiting-change-per-key corpus) reads GET /api/limits instead and checks fields.key's active
+ * value against expect.limitValue -- there is no request behind it, so it takes no ref. A "ref"
+ * field scopes a request/approve/cancel/get action to one of possibly several requests a scenario
+ * creates (see the stale and hides-breach corpus); omitted, it defaults to "r1".
  */
 @SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT)
 @Import({ TestcontainersConfig.class, LimitChangeScenarioTest.ClockOverride.class })
@@ -189,6 +191,7 @@ class LimitChangeScenarioTest {
 			case "cancel" -> doMutation(step, refs, "cancel");
 			case "advance-clock" -> doAdvanceClock(step);
 			case "get" -> doGet(step, refs);
+			case "get-limits" -> doGetLimits(step);
 			default -> throw new IllegalStateException(
 					"scenario " + scenario.id() + ": unknown step action \"" + step.action() + "\"");
 		}
@@ -246,6 +249,45 @@ class LimitChangeScenarioTest {
 				.body(res.bodyTo(String.class)));
 
 		checkExpect(step, response);
+	}
+
+	/**
+	 * "get-limits" (rule 11's S021 needs it): reads GET /api/limits and checks the active value of
+	 * the setting named by fields.key against expect.limitValue, via BigDecimal so trailing zeros in
+	 * NUMERIC(19,4)'s wire representation never cause a false mismatch. No ref: this reads the
+	 * firm-wide limits map, not one request.
+	 */
+	@SuppressWarnings("unchecked")
+	private void doGetLimits(Scenario.Step step) throws Exception {
+		String token = TokenTool.signedToken(step.actor(), step.roles(), 5, TEST_SECRET);
+		ResponseEntity<String> response = restClient.get()
+			.uri("http://localhost:" + port + "/api/limits")
+			.headers(h -> h.setBearerAuth(token))
+			.exchange((req, res) -> ResponseEntity.status(res.getStatusCode())
+				.headers(res.getHeaders())
+				.body(res.bodyTo(String.class)));
+
+		Scenario.Expect expect = step.expect();
+		if (expect == null) {
+			return;
+		}
+		if (expect.httpStatus() != null) {
+			assertThat(response.getStatusCode().value()).as("http status for a \"get-limits\" step")
+				.isEqualTo(expect.httpStatus());
+		}
+		if (expect.limitValue() != null) {
+			assertThat(response.getStatusCode().is2xxSuccessful())
+				.as("expected a successful response to read limits, got %s: %s", response.getStatusCode(),
+						response.getBody())
+				.isTrue();
+			String key = String.valueOf(step.fields().get("key"));
+			Map<String, Object> limits = objectMapper.readValue(response.getBody(), Map.class);
+			Object raw = limits.get(key);
+			assertThat(raw).as("no \"%s\" entry in GET /api/limits response %s", key, response.getBody())
+				.isNotNull();
+			assertThat(new BigDecimal(String.valueOf(raw))).as("active value of %s", key)
+				.isEqualByComparingTo(new BigDecimal(expect.limitValue()));
+		}
 	}
 
 	private void doAdvanceClock(Scenario.Step step) {

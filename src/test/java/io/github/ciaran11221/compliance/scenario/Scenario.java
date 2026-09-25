@@ -46,8 +46,13 @@ public record Scenario(String id, String title, String kind, List<String> covers
 	public record Step(String actor, List<String> roles, String action, Map<String, Object> fields, Expect expect) {
 	}
 
-	/** Whichever of these a step cares about; null means "not checked" for that field. */
-	public record Expect(Integer httpStatus, String resultStatus, Integer requiredApprovals, Boolean hidesBreach) {
+	/**
+	 * Whichever of these a step cares about; null means "not checked" for that field. limitValue is
+	 * for a "get-limits" step only: the expected active value (as a plain decimal string) of the
+	 * setting named by that step's fields.key, read back from GET /api/limits.
+	 */
+	public record Expect(Integer httpStatus, String resultStatus, Integer requiredApprovals, Boolean hidesBreach,
+			String limitValue) {
 	}
 
 	public record Fund(String code, BigDecimal totalAssets, BigDecimal cash, boolean diversified) {

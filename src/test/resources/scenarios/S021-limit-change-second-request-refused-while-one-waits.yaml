@@ -1,0 +1,79 @@
+id: S021
+title: A new request for a key is refused while an earlier change on it is still waiting to activate
+kind: limit-change
+covers: [limit-change:one-waiting-change-per-key]
+given:
+  fund: {code: LCB, totalAssets: "100000000", cash: "1000000", diversified: true}
+  securities:
+    - {ticker: LCXB, issuer: "Larchmere Concrete", price: "230", votingSharesOutstanding: 200000000, avgDailyVolume: 100000}
+  holdings:
+    - {ticker: LCXB, quantity: 100000}
+then:
+  outcome: "409 while waiting, then 18 (not 25) once the waiting change is cancelled and hour 24 passes"
+  note: >
+    Rule 11, the finding's own scene end to end. sup-1 tightens OVER_LIMIT_BUCKET_PCT to 20 so
+    there is room; sup-2 and sup-1/exec-1/comp-1 then approve brian's large loosening back to 25
+    (hidesBreach, per S018's LCB fixture), which waits out its 24h cooling off. While it waits,
+    sup-2's urgent 20->18 tightening is refused with 409 rather than silently racing it. Compliance
+    cancels the waiting loosening; the 20->18 request now succeeds and activates at once. The clock
+    is then moved past the old 24h mark, and GET /api/limits shows 18, not 25 -- the cancelled
+    loosening's setting_value row stays excluded regardless of how much time passes, and the urgent
+    tightening is what won.
+steps:
+  - actor: sup-1
+    roles: [SUPERVISOR]
+    action: request
+    fields: {key: OVER_LIMIT_BUCKET_PCT, newValue: "20", reason: "tighten the bucket ahead of the large loosening", ref: r1}
+    expect: {httpStatus: 201, resultStatus: PENDING, requiredApprovals: 1}
+  - actor: sup-2
+    roles: [SUPERVISOR]
+    action: approve
+    fields: {ref: r1}
+    expect: {httpStatus: 200, resultStatus: ACTIVE}
+  - actor: brian
+    roles: [SUPERVISOR]
+    action: request
+    fields: {key: OVER_LIMIT_BUCKET_PCT, newValue: "25", reason: "loosen the bucket back toward the legal maximum", ref: r2}
+    expect: {httpStatus: 201, resultStatus: PENDING, requiredApprovals: 3, hidesBreach: true}
+  - actor: sup-1
+    roles: [SUPERVISOR]
+    action: approve
+    fields: {ref: r2}
+    expect: {httpStatus: 200, resultStatus: PENDING}
+  - actor: exec-1
+    roles: [EXECUTIVE]
+    action: approve
+    fields: {ref: r2}
+    expect: {httpStatus: 200, resultStatus: PENDING}
+  - actor: comp-1
+    roles: [COMPLIANCE]
+    action: approve
+    fields: {ref: r2}
+    expect: {httpStatus: 200, resultStatus: AWAITING_ACTIVATION}
+  - actor: sup-2
+    roles: [SUPERVISOR]
+    action: request
+    fields: {key: OVER_LIMIT_BUCKET_PCT, newValue: "18", reason: "urgent tightening while the loosening is still waiting", ref: r3}
+    expect: {httpStatus: 409}
+  - actor: comp-1
+    roles: [COMPLIANCE]
+    action: cancel
+    fields: {ref: r2}
+    expect: {httpStatus: 200, resultStatus: CANCELLED}
+  - actor: sup-2
+    roles: [SUPERVISOR]
+    action: request
+    fields: {key: OVER_LIMIT_BUCKET_PCT, newValue: "18", reason: "urgent tightening, retried now the loosening is cancelled", ref: r3}
+    expect: {httpStatus: 201, resultStatus: PENDING, requiredApprovals: 1}
+  - actor: sup-1
+    roles: [SUPERVISOR]
+    action: approve
+    fields: {ref: r3}
+    expect: {httpStatus: 200, resultStatus: ACTIVE}
+  - action: advance-clock
+    fields: {minutes: 1440}
+  - actor: sup-1
+    roles: [SUPERVISOR]
+    action: get-limits
+    fields: {key: OVER_LIMIT_BUCKET_PCT}
+    expect: {httpStatus: 200, limitValue: "18"}
