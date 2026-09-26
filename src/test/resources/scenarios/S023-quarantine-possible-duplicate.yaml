@@ -1,0 +1,21 @@
+id: S023
+title: A same-side order within the lookback window and similar size is quarantined as a possible duplicate
+kind: quarantine
+covers: [quarantine:possible-duplicate]
+then:
+  outcome: "brian's order is quarantined as a possible duplicate of anne's"
+  note: >
+    Anne buys 1,000 KSTL; brian buys 1,050 KSTL (5% larger, within the default 10% SIMILARITY_PCT)
+    moments later on the same fund and security. Same side, similar size, within LOOKBACK_MINUTES
+    -> brian's order is quarantined rather than decided.
+steps:
+  - actor: anne
+    roles: [TRADER]
+    action: submit-order
+    fields: {side: BUY, ticker: KSTL, quantity: 1000, ref: o1}
+    expect: {httpStatus: 201, resultStatus: PASS}
+  - actor: brian
+    roles: [TRADER]
+    action: submit-order
+    fields: {side: BUY, ticker: KSTL, quantity: 1050, ref: o2}
+    expect: {httpStatus: 201, resultStatus: QUARANTINED, quarantineReason: POSSIBLE_DUPLICATE}

@@ -1,0 +1,26 @@
+id: S028
+title: With no eligible releaser in office, a quarantine escalates to the sender's backup
+kind: quarantine
+covers: [quarantine:escalate-to-backup]
+given:
+  outOfOffice:
+    - {staffId: sup-1, from: "2025-12-01T00:00:00Z", until: "2026-02-01T00:00:00Z"}
+    - {staffId: sup-3, from: "2025-12-01T00:00:00Z", until: "2026-02-01T00:00:00Z"}
+then:
+  outcome: "anne's quarantine is assigned to sup-2, her named backup"
+  note: >
+    anne's backup is sup-2 (R__seed.sql). sup-1 and sup-3 (the other two SUPERVISORs) are out of
+    office; the general eligible-releaser pool excludes anne's own backup by design (see
+    OrderService.resolveAssignee's Javadoc) and is otherwise empty, so escalation assigns to sup-2,
+    who is in office.
+steps:
+  - actor: brian
+    roles: [TRADER]
+    action: submit-order
+    fields: {side: BUY, ticker: KSTL, quantity: 1000, ref: o1}
+    expect: {httpStatus: 201, resultStatus: PASS}
+  - actor: anne
+    roles: [TRADER]
+    action: submit-order
+    fields: {side: BUY, ticker: KSTL, quantity: 1050, ref: o2}
+    expect: {httpStatus: 201, resultStatus: QUARANTINED, quarantineReason: POSSIBLE_DUPLICATE, assignedTo: sup-2}

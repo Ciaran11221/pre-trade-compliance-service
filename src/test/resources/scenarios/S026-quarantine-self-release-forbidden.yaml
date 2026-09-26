@@ -1,0 +1,26 @@
+id: S026
+title: The sender of a quarantined order may not release or reject their own quarantine
+kind: quarantine
+covers: [quarantine:self-release]
+then:
+  outcome: "403, self-release forbidden"
+  note: >
+    brian's order is quarantined (a possible duplicate of anne's). brian, even acting with a
+    SUPERVISOR role, may not release his own order: their token may be stolen, so the sender check
+    applies regardless of role.
+steps:
+  - actor: anne
+    roles: [TRADER]
+    action: submit-order
+    fields: {side: BUY, ticker: KSTL, quantity: 1000, ref: o1}
+    expect: {httpStatus: 201, resultStatus: PASS}
+  - actor: brian
+    roles: [TRADER]
+    action: submit-order
+    fields: {side: BUY, ticker: KSTL, quantity: 1050, ref: o2}
+    expect: {httpStatus: 201, resultStatus: QUARANTINED}
+  - actor: brian
+    roles: [SUPERVISOR]
+    action: release
+    fields: {ref: o2}
+    expect: {httpStatus: 403}
