@@ -7,7 +7,7 @@ import org.springframework.web.ErrorResponseException;
 /**
  * Every error this package's controller can produce, as application/problem+json: Spring resolves
  * an ErrorResponseException into that body automatically, the same RFC 7807 shape the security
- * layer's own handlers write by hand for 401/403 (see ProblemDetailAccessDeniedHandler).
+ * layer's own handlers write by hand for 401/403 (see ProblemDetailAccessDeniedHandler). A 400 comes from web.ApiProblems.
  */
 final class LimitChangeProblems {
 

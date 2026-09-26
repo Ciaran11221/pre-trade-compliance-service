@@ -7,7 +7,7 @@ import org.springframework.web.ErrorResponseException;
 /**
  * Every error this package's controller can produce, as application/problem+json -- same pattern
  * as limits.LimitChangeProblems and orders.OrdersProblems. 403 needs no case here: @PreAuthorize's
- * own ProblemDetailAccessDeniedHandler already renders that denial the same way.
+ * own ProblemDetailAccessDeniedHandler already renders that denial the same way. A 400 comes from web.ApiProblems.
  */
 final class ReferenceProblems {
 
@@ -19,10 +19,6 @@ final class ReferenceProblems {
 		problemDetail.setTitle(title);
 		problemDetail.setDetail(detail);
 		return new ErrorResponseException(status, problemDetail, null);
-	}
-
-	static ErrorResponseException badRequest(String detail) {
-		return problem(HttpStatus.BAD_REQUEST, "Bad request", detail);
 	}
 
 	static ErrorResponseException notFound(String detail) {

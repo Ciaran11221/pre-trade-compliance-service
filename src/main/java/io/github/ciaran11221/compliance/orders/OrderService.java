@@ -31,6 +31,7 @@ import io.github.ciaran11221.compliance.rules.Limits;
 import io.github.ciaran11221.compliance.rules.LimitsRepository;
 import io.github.ciaran11221.compliance.rules.OrderContext;
 import io.github.ciaran11221.compliance.rules.RuleResult;
+import io.github.ciaran11221.compliance.web.ApiProblems;
 
 /**
  * Order intake (spec 3.1): idempotent create, per-fund locking, running the compliance engine and
@@ -98,9 +99,9 @@ public class OrderService {
 	 */
 	@Transactional
 	public OrderView submit(String submitterId, OrderRequestBody body) {
-		List<OrdersProblems.FieldError> errors = validate(body);
+		List<ApiProblems.FieldError> errors = validate(body);
 		if (!errors.isEmpty()) {
-			throw OrdersProblems.badRequest(errors);
+			throw ApiProblems.badRequest(errors);
 		}
 
 		String clientOrderId = body.clientOrderId().trim();
@@ -374,7 +375,7 @@ public class OrderService {
 	@Transactional
 	public OrderView fill(long orderId, String actorId, BigDecimal explicitPrice) {
 		if (explicitPrice != null && explicitPrice.signum() <= 0) {
-			throw OrdersProblems.badRequest(List.of(new OrdersProblems.FieldError("price", "price must be a positive number.")));
+			throw ApiProblems.badRequest(List.of(new ApiProblems.FieldError("price", "price must be a positive number.")));
 		}
 
 		OrderRepository.OrderRow order = orderRepository.findOrder(orderId)
@@ -608,26 +609,26 @@ public class OrderService {
 		return snapshot;
 	}
 
-	private List<OrdersProblems.FieldError> validate(OrderRequestBody body) {
-		List<OrdersProblems.FieldError> errors = new ArrayList<>();
+	private List<ApiProblems.FieldError> validate(OrderRequestBody body) {
+		List<ApiProblems.FieldError> errors = new ArrayList<>();
 		if (body == null) {
-			errors.add(new OrdersProblems.FieldError("body", "a request body is required."));
+			errors.add(new ApiProblems.FieldError("body", "a request body is required."));
 			return errors;
 		}
 		if (isBlank(body.clientOrderId())) {
-			errors.add(new OrdersProblems.FieldError("clientOrderId", "clientOrderId is required."));
+			errors.add(new ApiProblems.FieldError("clientOrderId", "clientOrderId is required."));
 		}
 		if (body.fundId() == null) {
-			errors.add(new OrdersProblems.FieldError("fundId", "fundId is required."));
+			errors.add(new ApiProblems.FieldError("fundId", "fundId is required."));
 		}
 		if (isBlank(body.side()) || !isValidSide(body.side())) {
-			errors.add(new OrdersProblems.FieldError("side", "side must be BUY or SELL."));
+			errors.add(new ApiProblems.FieldError("side", "side must be BUY or SELL."));
 		}
 		if (isBlank(body.ticker())) {
-			errors.add(new OrdersProblems.FieldError("ticker", "ticker is required."));
+			errors.add(new ApiProblems.FieldError("ticker", "ticker is required."));
 		}
 		if (body.quantity() == null || body.quantity() <= 0) {
-			errors.add(new OrdersProblems.FieldError("quantity", "quantity must be a positive number."));
+			errors.add(new ApiProblems.FieldError("quantity", "quantity must be a positive number."));
 		}
 		return errors;
 	}

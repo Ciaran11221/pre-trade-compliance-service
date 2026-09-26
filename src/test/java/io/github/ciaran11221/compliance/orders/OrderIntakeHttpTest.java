@@ -128,8 +128,14 @@ class OrderIntakeHttpTest {
 		ResponseEntity<String> response = post(body);
 
 		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-		assertThat(response.getBody()).contains("clientOrderId").contains("side").contains("ticker")
-			.contains("quantity");
+		// Check that errors[] array contains entries for each bad field
+		tools.jackson.databind.JsonNode jsonResponse = objectMapper.readTree(response.getBody());
+		assertThat(jsonResponse.has("errors")).isTrue();
+		tools.jackson.databind.JsonNode errors = jsonResponse.get("errors");
+		java.util.List<String> errorFields = errors.findValues("field").stream()
+			.map(tools.jackson.databind.JsonNode::asText)
+			.toList();
+		assertThat(errorFields).contains("clientOrderId", "side", "ticker", "quantity");
 	}
 
 	@Test
