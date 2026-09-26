@@ -67,6 +67,8 @@ Needs Java 17 and Docker.
 
 The `local` profile loads demo funds, stocks and staff and ships a development-only signing key. Outside it, the service will not start without `JWT_SECRET`. Sign-in itself (passwords, single sign-on) is the firm's existing system; this service trusts a correctly signed token.
 
+With the service running on the `local` profile, http://localhost:8080/swagger-ui/index.html lists every route and lets you send requests from the browser. [docs/DEMO.md](docs/DEMO.md) walks through eight scenes to try, and [docs/LEARNING.md](docs/LEARNING.md) gives an order to read the code in, with changes to try that a test will catch.
+
 ## Design decisions
 
 **Two people, one order.**
@@ -77,7 +79,7 @@ The `local` profile loads demo funds, stocks and staff and ships a development-o
 **The second person may not be in.**
 - **Problem:** a held order waits for a supervisor who is on leave. Separately, a login belonging to someone on leave may be in someone else's hands.
 - **Decision:**
-  - A held order is assigned to an in-office supervisor, then to the sender's named backup, then to compliance.
+  - A held order is open to any in-office supervisor other than the sender. If none is in, it is assigned to the sender's named backup, then to compliance.
   - Anyone marked out of office cannot release, reject or approve.
   - Their own orders are held.
 - **Why:** a release that waits for someone on holiday isn't a control, and an action from an absent person's login is the one most likely to be stolen.
@@ -115,7 +117,7 @@ The `local` profile loads demo funds, stocks and staff and ships a development-o
 - Voting control is checked per security, not pooled across an issuer's share classes.
 - The reading of 75-5-10 at the moment of purchase (a fund pushed over by price moves is not forced to sell) is an interpretation. It has not been reviewed by a compliance professional.
 - A fill applies at one price for the whole quantity.
-- No market data, broker routing, partial fills, notifications, frontend, or API documentation page.
+- No market data, broker routing, partial fills, notifications, or frontend.
 - Out-of-office status is a flag on the staff table, not a feed from an HR system.
 
 ## Roadmap
