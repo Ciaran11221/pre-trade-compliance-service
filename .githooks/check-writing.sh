@@ -1,7 +1,7 @@
 #!/bin/sh
 # Check stdin for banned words and emoji/em-dash
 
-perl - "$1" <<'PERL_EOF'
+perl -e '
 use utf8;
 use strict;
 use warnings;
@@ -12,7 +12,7 @@ my $banned_file = shift @ARGV || "docs/banned-words.txt";
 
 # Read banned words
 my @words = ();
-if (open my $fh, '<:utf8', $banned_file) {
+if (open my $fh, "<:utf8", $banned_file) {
     while (<$fh>) {
         chomp;
         next if /^#/;
@@ -25,21 +25,29 @@ if (open my $fh, '<:utf8', $banned_file) {
 my @violations;
 my $line_num = 0;
 
-while (<>) {
+while (<STDIN>) {
     $line_num++;
     my $line = $_;
 
     # Check for each banned word
     foreach my $word (@words) {
-        # Escape regex special chars except spaces
-        my $escaped = quotemeta($word);
-        # Convert spaces to \s+ for flexible whitespace matching
-        $escaped =~ s/\\ /\\s+/g;
-        # Convert apostrophes to match both straight and curly quotes
-        $escaped =~ s/\\'/[\x27\x{2019}]/g;
+        # Build pattern character by character
+        my $pattern = "";
+        for my $c (split //, $word) {
+            if ($c eq " ") {
+                $pattern .= "\\\\s+";
+            } elsif ($c eq "'\''") {
+                # Match straight or curly apostrophe
+                $pattern .= "['\''\\\\x{2019}]";
+            } elsif ($c =~ /[\\\\^$.|?*+()[\]{}]/) {
+                $pattern .= "\\\\\\\\" . $c;
+            } else {
+                $pattern .= $c;
+            }
+        }
 
-        # Match at word boundary, case-insensitive
-        if ($line =~ /\b(?:$escaped)\b/i) {
+        # Match at word start, case-insensitive
+        if ($line =~ /\b(?:$pattern)/i) {
             my $match = $&;
             push @violations, "$line_num: $match";
             last;
@@ -52,7 +60,7 @@ while (<>) {
     }
 
     # Check for em dash (U+2014)
-    if ($line =~ /(\x{2014})/) {
+    if ($line =~ /\x{2014}/) {
         push @violations, "$line_num: [em dash]";
     }
 }
@@ -64,4 +72,4 @@ if (@violations) {
     exit 1;
 }
 exit 0;
-PERL_EOF
+' "$@"
