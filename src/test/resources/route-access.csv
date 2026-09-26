@@ -10,3 +10,7 @@ GET,/api/orders/{id},TRADER;SUPERVISOR;COMPLIANCE
 GET,/api/funds/{fundId}/orders,TRADER;SUPERVISOR;COMPLIANCE
 POST,/api/orders/{id}/fill,TRADER
 POST,/api/orders/{id}/cancel,TRADER
+GET,/api/quarantine,SUPERVISOR;COMPLIANCE
+POST,/api/quarantine/{id}/release,SUPERVISOR
+POST,/api/quarantine/{id}/reject,SUPERVISOR
+PUT,/api/staff/{id}/out-of-office,SUPERVISOR
