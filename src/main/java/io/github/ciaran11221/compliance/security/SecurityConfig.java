@@ -82,19 +82,28 @@ public class SecurityConfig {
 	SecurityFilterChain securityFilterChain(HttpSecurity http, JwtAuthenticationConverter jwtAuthenticationConverter,
 			KnownStaffAuthorizationManager knownStaffAuthorizationManager,
 			ProblemDetailAuthenticationEntryPoint authenticationEntryPoint,
-			ProblemDetailAccessDeniedHandler accessDeniedHandler) throws Exception {
+			ProblemDetailAccessDeniedHandler accessDeniedHandler,
+			@Value("${springdoc.api-docs.enabled:false}") boolean apiDocsEnabled) throws Exception {
 		http
 			// Bearer-token API: no cookies are ever involved, so there is no session for a forged
 			// cross-site request to ride on. CSRF protection defends cookie-based auth and does not
 			// apply here.
 			.csrf(csrf -> csrf.disable())
 			.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-			.authorizeHttpRequests(auth -> auth
-				.requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
-				// Deny by default: every other route needs a valid, signed token AND a sub that
-				// is a real member of staff, checked centrally here rather than per controller.
-				// Per-route ROLE checks then live only in @PreAuthorize on each handler.
-				.anyRequest().access(knownStaffAuthorizationManager))
+			.authorizeHttpRequests(auth -> {
+				if (apiDocsEnabled) {
+					// When Swagger is enabled (local profile), permit the UI and API docs endpoints.
+					// They exist and need to be accessible without a token.
+					auth.requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**")
+						.permitAll();
+				}
+				auth
+					.requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
+					// Deny by default: every other route needs a valid, signed token AND a sub that
+					// is a real member of staff, checked centrally here rather than per controller.
+					// Per-route ROLE checks then live only in @PreAuthorize on each handler.
+					.anyRequest().access(knownStaffAuthorizationManager);
+			})
 			// oauth2ResourceServer() registers its own default entry point/handler (the
 			// WWW-Authenticate-header, empty-body kind) scoped to bearer-token requests, which
 			// otherwise takes precedence over the plain exceptionHandling() ones below -- set here

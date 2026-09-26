@@ -9,3 +9,10 @@ compliance:
     # local profile only, for a developer running the service on their own machine (see TokenTool,
     # which signs tokens with this same value). Never use this value outside a local run.
     jwt-secret: local-dev-only-secret-do-not-use-in-any-other-environment
+
+# Swagger page at /swagger-ui/index.html, local profile only.
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
