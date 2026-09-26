@@ -117,19 +117,6 @@
 			<artifactId>jackson-dataformat-yaml</artifactId>
 			<scope>test</scope>
 		</dependency>
-		<!-- M9 (issue #30), property tests. jqwik 1.10.1 is the latest release and (per its own
-		     release notes) still targets JUnit Platform 1.x, while Spring Boot 4.1.1's BOM pins
-		     junit-platform-engine to 6.0.3 (the newer, jupiter-aligned numbering) project-wide, so
-		     jqwik-engine ends up running against a platform-engine jar one major line ahead of what
-		     it declares. Confirmed empirically before relying on it: a throwaway jqwik @Property
-		     ran under this exact dependency set, surefire reported it, and the jqwik report showed
-		     tries and checks both at 1000. -->
-		<dependency>
-			<groupId>net.jqwik</groupId>
-			<artifactId>jqwik</artifactId>
-			<version>1.10.1</version>
-			<scope>test</scope>
-		</dependency>
 	</dependencies>
 
 	<build>

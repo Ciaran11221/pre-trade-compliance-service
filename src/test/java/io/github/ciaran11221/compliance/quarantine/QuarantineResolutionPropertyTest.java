@@ -1,33 +1,32 @@
 package io.github.ciaran11221.compliance.quarantine;
 
 import java.time.Instant;
-import java.util.LinkedHashMap;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
+import java.util.SplittableRandom;
 import java.util.concurrent.atomic.AtomicLong;
 
-import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.flywaydb.core.Flyway;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
 import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.web.ErrorResponseException;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
-import net.jqwik.api.Arbitraries;
-import net.jqwik.api.Arbitrary;
-import net.jqwik.api.Combinators;
-import net.jqwik.api.ForAll;
-import net.jqwik.api.Property;
-import net.jqwik.api.Provide;
-import net.jqwik.api.lifecycle.AfterContainer;
-
-import io.github.ciaran11221.compliance.PreTradeComplianceServiceApplication;
 import io.github.ciaran11221.compliance.orders.OrderRequestBody;
 import io.github.ciaran11221.compliance.orders.OrderService;
 import io.github.ciaran11221.compliance.orders.OrderView;
 import io.github.ciaran11221.compliance.support.MutableClock;
+import io.github.ciaran11221.compliance.support.TestcontainersConfig;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -45,68 +44,74 @@ import static org.assertj.core.api.Assertions.assertThat;
  * database itself enforces: at most one resolution row per quarantine, so it can never hold both a
  * RELEASED and a REJECTED row for the same order.
  *
- * Each try creates its OWN pair of orders (via OrderService.submit(), same fund/security/side and a
- * quantity within SIMILARITY_PCT of the first, exactly how QuarantineResolutionRaceTest triggers a
- * POSSIBLE_DUPLICATE quarantine) so that a try never contends with another try's quarantine. Runs
- * against ONE Spring context / Postgres container for the whole 1000-try property, for the same
- * reason as limits.LimitBoundsPropertyTest: flyway.clean() + migrate() per try was measured too slow
- * for 1000 real-database tries, and is not needed here since every try targets a fresh order pair.
+ * A single @Test loops 1,000 cases. Each case creates its OWN pair of orders (via
+ * OrderService.submit(), same fund/security/side and a quantity within SIMILARITY_PCT of the
+ * first, exactly how QuarantineResolutionRaceTest triggers a POSSIBLE_DUPLICATE quarantine) so a
+ * case never contends with another case's quarantine, and asserts the second order is QUARANTINED
+ * before running its own release/reject sequence. Runs against ONE Spring context / Testcontainers
+ * Postgres for the whole run, for the same reason as limits.LimitBoundsPropertyTest: resetting
+ * between every one of 1,000 cases is not needed for an invariant that only depends on each case's
+ * own, independently-created order pair. The database is still reset once before the @Test and
+ * once after (@AfterEach), so the roughly 2,000 orders this test creates never leak into another
+ * test class sharing this Spring context.
  *
- * As in LimitBoundsPropertyTest, this starts its own Postgres container by hand (see that class's
- * Javadoc for why TestcontainersConfig's @ServiceConnection bean does not fire outside the Spring
- * TestContext framework) and wires it in through System properties, which outrank
- * application.yml's own spring.datasource.url default -- the developer's local `docker compose up
- * -d` Postgres that trap 8 warns a database test must never fall back to.
+ * The generator's first cases are deterministic: both senders, both verbs, both quantity-delta
+ * extremes, the sender trying (and being refused) to resolve their own quarantine before a
+ * different actor does, the same actor acting twice, and two different actors racing release
+ * against reject in both orders -- so every one of those paths is guaranteed to run at least once,
+ * not just left to chance. The remaining cases are random action sequences of length 1 to 4 (seeded
+ * java.util.SplittableRandom, overridable with -Dm9.seed=N) drawing from the six seeded staff ids
+ * this test uses as actors.
+ *
+ * Not covered: two threads racing on the very same call (see QuarantineResolutionRaceTest for
+ * that), and the scheduled expiry job resolving a quarantine out from under a release/reject call
+ * (see QuarantineExpiryJobTest).
  */
+@SpringBootTest(webEnvironment = WebEnvironment.NONE)
+@Import({ TestcontainersConfig.class, QuarantineResolutionPropertyTest.ClockOverride.class })
+@ActiveProfiles("test")
 class QuarantineResolutionPropertyTest {
+
+	private static final long SEED = Long.getLong("m9.seed", 300719L);
+
+	private static final int CASE_COUNT = 1000;
 
 	private static final Instant FIXED_START = Instant.parse("2026-01-01T00:00:00Z");
 
 	private static final List<String> ACTORS = List.of("anne", "brian", "sup-1", "sup-2", "sup-3", "comp-1");
 
-	private static final PostgreSQLContainer POSTGRES = startPostgres();
+	private final AtomicLong tryCounter = new AtomicLong();
 
-	private static final ConfigurableApplicationContext CONTEXT = bootstrap();
+	@Autowired
+	private Flyway flyway;
 
-	private static final OrderService ORDER_SERVICE = CONTEXT.getBean(OrderService.class);
+	@Autowired
+	private OrderService orderService;
 
-	private static final QuarantineService QUARANTINE_SERVICE = CONTEXT.getBean(QuarantineService.class);
+	@Autowired
+	private QuarantineService quarantineService;
 
-	private static final JdbcTemplate JDBC = CONTEXT.getBean(JdbcTemplate.class);
+	@Autowired
+	private JdbcTemplate jdbcTemplate;
 
-	private static final long HGF_FUND_ID = JDBC.queryForObject("SELECT id FROM fund WHERE code = 'HGF'", Long.class);
+	@Autowired
+	private MutableClock clock;
 
-	private static final AtomicLong TRY_COUNTER = new AtomicLong();
+	private long hgfFundId;
 
-	@SuppressWarnings("resource")
-	private static PostgreSQLContainer startPostgres() {
-		PostgreSQLContainer container = new PostgreSQLContainer("postgres:17-alpine");
-		container.start();
-		return container;
+	@BeforeEach
+	void resetDatabase() {
+		flyway.clean();
+		flyway.migrate();
+		clock.set(FIXED_START);
+		hgfFundId = jdbcTemplate.queryForObject("SELECT id FROM fund WHERE code = 'HGF'", Long.class);
 	}
 
-	// See the class Javadoc: System properties, not SpringApplicationBuilder#properties(...), are
-	// what actually outrank application.yml's spring.datasource.url default.
-	private static ConfigurableApplicationContext bootstrap() {
-		System.setProperty("spring.datasource.url", POSTGRES.getJdbcUrl());
-		System.setProperty("spring.datasource.username", POSTGRES.getUsername());
-		System.setProperty("spring.datasource.password", POSTGRES.getPassword());
-		try {
-			return new SpringApplicationBuilder(PreTradeComplianceServiceApplication.class, ClockOverride.class)
-				.profiles("test")
-				.run();
-		}
-		finally {
-			System.clearProperty("spring.datasource.url");
-			System.clearProperty("spring.datasource.username");
-			System.clearProperty("spring.datasource.password");
-		}
-	}
-
-	@AfterContainer
-	static void tearDown() {
-		CONTEXT.close();
-		POSTGRES.stop();
+	@AfterEach
+	void resetDatabaseAfter() {
+		flyway.clean();
+		flyway.migrate();
+		clock.set(FIXED_START);
 	}
 
 	@TestConfiguration(proxyBeanMethods = false)
@@ -126,66 +131,138 @@ class QuarantineResolutionPropertyTest {
 	record Case(String secondSubmitter, long quantityDelta, List<Action> actions) {
 	}
 
-	@Property(tries = 1000)
-	void neverBothReleasedAndRejected(@ForAll("cases") Case c) {
-		long n = TRY_COUNTER.incrementAndGet();
-		long baseQuantity = 1_000L;
-		long secondQuantity = baseQuantity + c.quantityDelta();
+	@Test
+	void neverBothReleasedAndRejected() {
+		List<Case> cases = generateCases();
+		assertThat(cases).as("seed %d: generator must produce exactly %d cases", SEED, CASE_COUNT)
+			.hasSize(CASE_COUNT);
 
-		submit("prop-c-" + n + "-a", "anne", "BUY", "KSTL", baseQuantity);
-		OrderView second = submit("prop-c-" + n + "-b", c.secondSubmitter(), "BUY", "KSTL", secondQuantity);
-		assertThat(second.status()).as("case %s: second order must be quarantined to exercise this property", c)
-			.isEqualTo("QUARANTINED");
+		int releasedCount = 0;
+		int rejectedCount = 0;
 
-		for (Action action : c.actions()) {
-			try {
-				if (action.release()) {
-					QUARANTINE_SERVICE.release(second.id(), action.actor());
+		for (int i = 0; i < cases.size(); i++) {
+			Case c = cases.get(i);
+			String label = "seed=" + SEED + " case=" + i + " " + c;
+			long n = tryCounter.incrementAndGet();
+			long baseQuantity = 1_000L;
+			long secondQuantity = baseQuantity + c.quantityDelta();
+
+			submit("prop-c-" + n + "-a", "anne", "BUY", "KSTL", baseQuantity);
+			OrderView second = submit("prop-c-" + n + "-b", c.secondSubmitter(), "BUY", "KSTL", secondQuantity);
+			assertThat(second.status()).as("%s: second order must be quarantined to exercise this property", label)
+				.isEqualTo("QUARANTINED");
+
+			for (Action action : c.actions()) {
+				try {
+					if (action.release()) {
+						quarantineService.release(second.id(), action.actor());
+					}
+					else {
+						quarantineService.reject(second.id(), action.actor());
+					}
 				}
-				else {
-					QUARANTINE_SERVICE.reject(second.id(), action.actor());
+				catch (ErrorResponseException expectedRefusal) {
+					// The sender resolving their own quarantine, a second actor finding it already
+					// resolved, etc. are exactly what the business rules are meant to refuse; only the
+					// resolution-count invariant below is under test here.
 				}
 			}
-			catch (ErrorResponseException expectedRefusal) {
-				// The sender resolving their own quarantine, a second actor finding it already
-				// resolved, etc. are exactly what the business rules are meant to refuse; only the
-				// resolution-count invariant below is under test here.
+
+			Integer resolutionCount = jdbcTemplate.queryForObject(
+					"SELECT COUNT(*) FROM quarantine_resolution qr JOIN quarantine q ON q.id = qr.quarantine_id "
+							+ "WHERE q.order_id = ?",
+					Integer.class, second.id());
+			assertThat(resolutionCount).as("%s: at most one resolution for order %s, never both released and rejected",
+					label, second.id()).isLessThanOrEqualTo(1);
+
+			Integer conflictingCount = jdbcTemplate.queryForObject(
+					"SELECT COUNT(*) FROM quarantine_resolution qr JOIN quarantine q ON q.id = qr.quarantine_id "
+							+ "WHERE q.order_id = ? AND qr.resolution IN ('RELEASED', 'REJECTED')",
+					Integer.class, second.id());
+			assertThat(conflictingCount)
+				.as("%s: never both a RELEASED and a REJECTED resolution for order %s", label, second.id())
+				.isLessThanOrEqualTo(1);
+
+			List<String> resolutions = jdbcTemplate.queryForList(
+					"SELECT qr.resolution FROM quarantine_resolution qr JOIN quarantine q ON q.id = qr.quarantine_id "
+							+ "WHERE q.order_id = ? AND qr.resolution IN ('RELEASED', 'REJECTED')",
+					String.class, second.id());
+			if (resolutions.contains("RELEASED")) {
+				releasedCount++;
+			}
+			else if (resolutions.contains("REJECTED")) {
+				rejectedCount++;
 			}
 		}
 
-		Integer resolutionCount = JDBC.queryForObject(
-				"SELECT COUNT(*) FROM quarantine_resolution qr JOIN quarantine q ON q.id = qr.quarantine_id "
-						+ "WHERE q.order_id = ?",
-				Integer.class, second.id());
-		assertThat(resolutionCount).as("case %s: at most one resolution for order %s, never both released and rejected",
-				c, second.id()).isLessThanOrEqualTo(1);
+		System.out.println("M9 part c counters: releasedCount=" + releasedCount + " rejectedCount=" + rejectedCount
+				+ " of " + CASE_COUNT + " cases (seed=" + SEED + ")");
 
-		Integer conflictingCount = JDBC.queryForObject(
-				"SELECT COUNT(*) FROM quarantine_resolution qr JOIN quarantine q ON q.id = qr.quarantine_id "
-						+ "WHERE q.order_id = ? AND qr.resolution IN ('RELEASED', 'REJECTED')",
-				Integer.class, second.id());
-		assertThat(conflictingCount)
-			.as("case %s: never both a RELEASED and a REJECTED resolution for order %s", c, second.id())
-			.isLessThanOrEqualTo(1);
+		assertThat(releasedCount)
+			.as("seed %d: at least one of %d cases must end RELEASED (saw %d)", SEED, CASE_COUNT, releasedCount)
+			.isGreaterThan(0);
+		assertThat(rejectedCount)
+			.as("seed %d: at least one of %d cases must end REJECTED (saw %d)", SEED, CASE_COUNT, rejectedCount)
+			.isGreaterThan(0);
 	}
 
 	private OrderView submit(String clientOrderId, String submitterId, String side, String ticker, long quantity) {
-		OrderRequestBody body = new OrderRequestBody(clientOrderId, HGF_FUND_ID, side, ticker, quantity);
-		return ORDER_SERVICE.submit(submitterId, body);
+		OrderRequestBody body = new OrderRequestBody(clientOrderId, hgfFundId, side, ticker, quantity);
+		return orderService.submit(submitterId, body);
 	}
 
-	@Provide
-	Arbitrary<Case> cases() {
-		Arbitrary<String> submitterArb = Arbitraries.of("anne", "brian");
+	private List<Case> generateCases() {
+		List<Case> cases = new ArrayList<>();
+		addEdgeCases(cases);
+
+		SplittableRandom random = new SplittableRandom(SEED);
+		while (cases.size() < CASE_COUNT) {
+			cases.add(randomCase(random));
+		}
+		return cases;
+	}
+
+	/**
+	 * Both senders, both verbs, both quantity-delta extremes, the sender trying (and being refused)
+	 * to resolve their own quarantine before someone else does, the same actor acting twice, and two
+	 * different actors racing release against reject in both orders.
+	 */
+	private void addEdgeCases(List<Case> cases) {
+		for (String submitter : List.of("anne", "brian")) {
+			for (long delta : new long[] { -100, 0, 100 }) {
+				cases.add(new Case(submitter, delta, List.of(new Action("sup-1", true))));
+				cases.add(new Case(submitter, delta, List.of(new Action("sup-1", false))));
+				// The sender tries to resolve their own quarantine first (refused), then a different
+				// actor actually resolves it.
+				cases.add(new Case(submitter, delta, List.of(new Action(submitter, true), new Action("sup-2", true))));
+				cases.add(
+						new Case(submitter, delta, List.of(new Action(submitter, false), new Action("sup-2", false))));
+				// The same actor acts twice: the second call finds it already resolved.
+				cases.add(new Case(submitter, delta,
+						List.of(new Action("sup-1", true), new Action("sup-1", true))));
+				// Two different actors race release against reject, both directions.
+				cases.add(new Case(submitter, delta,
+						List.of(new Action("sup-1", true), new Action("sup-2", false))));
+				cases.add(new Case(submitter, delta,
+						List.of(new Action("sup-1", false), new Action("sup-2", true))));
+			}
+		}
+	}
+
+	private Case randomCase(SplittableRandom random) {
+		String submitter = random.nextBoolean() ? "anne" : "brian";
 		// Kept well inside SIMILARITY_PCT's default 10% of a 1,000-share baseline (up to 100 either
 		// way) so the second order reliably lands in quarantine as a POSSIBLE_DUPLICATE regardless of
-		// which similarity value this run happens to generate through jqwik's own edge cases.
-		Arbitrary<Long> deltaArb = Arbitraries.longs().between(-100, 100);
-		Arbitrary<Action> actionArb = Combinators.combine(Arbitraries.of(ACTORS), Arbitraries.of(true, false))
-			.as(Action::new);
-		Arbitrary<List<Action>> actionsArb = actionArb.list().ofMinSize(1).ofMaxSize(4);
+		// which similarity value this run happens to generate.
+		long delta = random.nextLong(-100, 101);
 
-		return Combinators.combine(submitterArb, deltaArb, actionsArb).as(Case::new);
+		int actionCount = random.nextInt(1, 5);
+		List<Action> actions = new ArrayList<>();
+		for (int i = 0; i < actionCount; i++) {
+			actions.add(new Action(ACTORS.get(random.nextInt(ACTORS.size())), random.nextBoolean()));
+		}
+
+		return new Case(submitter, delta, actions);
 	}
 
 }
