@@ -159,6 +159,26 @@ class OrderIntakeHttpTest {
 		assertThat(fillResponse.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
 	}
 
+	// R__seed.sql: HGF holds 450,000 KSTL. A sell above that holding blocks; a sell of exactly that
+	// holding passes (the boundary is inclusive) -- issue #23.
+	@Test
+	void sellAboveTheFundsHoldingBlocksAndSellOfExactlyTheHoldingPasses() throws Exception {
+		OrderView above = readView(submit("http-sell-above-holding", hgfFundId, "SELL", "KSTL", 1_000_000L));
+		assertThat(above.status()).isEqualTo("BLOCK");
+		assertThat(above.decision().outcome()).isEqualTo("BLOCK");
+		RuleResultView holdingResult = above.decision()
+			.ruleResults()
+			.stream()
+			.filter(r -> r.ruleName().equals("holding"))
+			.findFirst()
+			.orElseThrow(() -> new AssertionError("no holding rule result on order " + above.id()));
+		assertThat(holdingResult.outcome()).isEqualTo("BLOCK");
+
+		OrderView exact = readView(submit("http-sell-exact-holding", hgfFundId, "SELL", "KSTL", 450_000L));
+		assertThat(exact.status()).isEqualTo("PASS");
+		assertThat(exact.decision().outcome()).isEqualTo("PASS");
+	}
+
 	@Test
 	void getOrderReturnsWhatWasStored() throws Exception {
 		ResponseEntity<String> submitResponse = submit("http-get", hgfFundId, "BUY", "KSTL", 50_000L);

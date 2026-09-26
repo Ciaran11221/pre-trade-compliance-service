@@ -1,0 +1,22 @@
+id: S034
+title: Sell of exactly the fund's holding passes
+kind: rule
+covers: [rule:holding]
+given:
+  settings: {}
+  fund: {code: HGF, totalAssets: "1000000000", cash: "100000000", diversified: false}
+  securities:
+    - {ticker: KSTL, price: "100", votingSharesOutstanding: 50000000, avgDailyVolume: 20000000}
+  holdings:
+    - {ticker: KSTL, quantity: 450000}
+  restricted: []
+  pendingOrders: []
+when:
+  order: {side: SELL, ticker: KSTL, quantity: 450000}
+then:
+  outcome: PASS
+  rules: {holding: PASS}
+  note: >
+    HGF holds 450,000 KSTL and has no pending sells of it, so 450,000 shares are available. The
+    order sells exactly 450,000, which fits within what is available, so PASS (the boundary is
+    inclusive).
