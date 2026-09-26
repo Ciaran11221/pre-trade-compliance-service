@@ -87,8 +87,10 @@ class AuditTablesInsertOnlyTest {
 						+ "VALUES (?, 'issuer-limit', 'PASS', 'within limit', 1.0000, 5.0000)",
 				decisionId);
 
-		jdbc.update("INSERT INTO quarantine (order_id, reason, quarantined_at, expires_at) "
-				+ "VALUES (?, 'POSSIBLE_DUPLICATE', now(), now() + interval '30 minutes')", orderId);
+		// assignment is required on every row inserted since V6 (issue #27); ANY_SUPERVISOR needs no
+		// assigned_to, same as the general-pool case OrderService.resolveAssignee itself would record.
+		jdbc.update("INSERT INTO quarantine (order_id, reason, quarantined_at, expires_at, assignment) "
+				+ "VALUES (?, 'POSSIBLE_DUPLICATE', now(), now() + interval '30 minutes', 'ANY_SUPERVISOR')", orderId);
 		quarantineId = jdbc.queryForObject("SELECT id FROM quarantine WHERE order_id = ?", Long.class, orderId);
 
 		jdbc.update("INSERT INTO quarantine_resolution (quarantine_id, resolution, resolved_by, resolved_at) "

@@ -51,6 +51,17 @@ public class OrderRepository {
 
 	private static final List<String> TERMINAL_EVENT_TYPES = List.of("FILLED", "CANCELLED");
 
+	/**
+	 * Issue #27's read-path mapping for a row with no unqualified table alias (findQuarantineByOrderId
+	 * only): a row written since V6 carries its own recorded assignment verbatim; an older row (column
+	 * NULL) is never guessed at as one of the three real states, only as ASSIGNED when assigned_to
+	 * says so, else NOT_RECORDED. quarantine.QuarantineRepository keeps its own copy of this same
+	 * expression qualified with "q." for its joined queries -- see that class's Javadoc for why the
+	 * two repositories run their own SQL against shared tables rather than sharing Java code.
+	 */
+	private static final String ASSIGNMENT_READ_EXPRESSION = "COALESCE(assignment, "
+			+ "CASE WHEN assigned_to IS NOT NULL THEN 'ASSIGNED' ELSE 'NOT_RECORDED' END)";
+
 	private final JdbcTemplate jdbcTemplate;
 
 	public OrderRepository(JdbcTemplate jdbcTemplate) {
@@ -88,8 +99,14 @@ public class OrderRepository {
 			boolean excludedFromLookback) {
 	}
 
+	/**
+	 * assignment (issue #27) is the read-path state: ANY_SUPERVISOR, ASSIGNED or UNASSIGNED as
+	 * recorded when the quarantine was written, or NOT_RECORDED for a row written before that column
+	 * existed (never guessed from assignedTo). See mapQuarantine's COALESCE for how NOT_RECORDED is
+	 * produced; it is never stored.
+	 */
 	public record QuarantineRow(long id, long orderId, String reason, Long matchedOrderId, Instant quarantinedAt,
-			Instant expiresAt, String assignedTo) {
+			Instant expiresAt, String assignment, String assignedTo) {
 	}
 
 	/**
@@ -437,31 +454,34 @@ public class OrderRepository {
 	}
 
 	/**
-	 * Records a new quarantine (spec 3.3): reason, the earlier order it matched (null for
-	 * SENDER_OUT_OF_OFFICE), when it expires, and its escalation assignee (null if none was found --
-	 * "recorded as unassigned", still queryable as such).
+	 * Records a new quarantine (spec 3.3, issue #27): reason, the earlier order it matched (null for
+	 * SENDER_OUT_OF_OFFICE), when it expires, the escalation state OrderService.resolveAssignee
+	 * decided (ANY_SUPERVISOR, ASSIGNED or UNASSIGNED -- always one of the three for a new row, never
+	 * null; enforced by quarantine_assignment_required) and the assignee (non-null only for ASSIGNED;
+	 * enforced by quarantine_assignment_matches_assignee).
 	 */
 	public long insertQuarantine(long orderId, String reason, Long matchedOrderId, Instant quarantinedAt,
-			Instant expiresAt, String assignedTo) {
+			Instant expiresAt, String assignment, String assignedTo) {
 		return jdbcTemplate.queryForObject("""
-				INSERT INTO quarantine (order_id, reason, matched_order_id, quarantined_at, expires_at, assigned_to)
-				VALUES (?, ?, ?, ?, ?, ?) RETURNING id
+				INSERT INTO quarantine (order_id, reason, matched_order_id, quarantined_at, expires_at, assignment, assigned_to)
+				VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id
 				""", Long.class, orderId, reason, matchedOrderId, Timestamp.from(quarantinedAt),
-				Timestamp.from(expiresAt), assignedTo);
+				Timestamp.from(expiresAt), assignment, assignedTo);
 	}
 
 	public Optional<QuarantineRow> findQuarantineByOrderId(long orderId) {
 		return jdbcTemplate.query("""
-				SELECT id, order_id, reason, matched_order_id, quarantined_at, expires_at, assigned_to
+				SELECT id, order_id, reason, matched_order_id, quarantined_at, expires_at, assigned_to,
+				       %s AS assignment
 				FROM quarantine WHERE order_id = ?
-				""", this::mapQuarantine, orderId).stream().findFirst();
+				""".formatted(ASSIGNMENT_READ_EXPRESSION), this::mapQuarantine, orderId).stream().findFirst();
 	}
 
 	private QuarantineRow mapQuarantine(ResultSet rs, int rowNum) throws SQLException {
 		long matched = rs.getLong("matched_order_id");
 		return new QuarantineRow(rs.getLong("id"), rs.getLong("order_id"), rs.getString("reason"),
 				rs.wasNull() ? null : matched, rs.getTimestamp("quarantined_at").toInstant(),
-				rs.getTimestamp("expires_at").toInstant(), rs.getString("assigned_to"));
+				rs.getTimestamp("expires_at").toInstant(), rs.getString("assignment"), rs.getString("assigned_to"));
 	}
 
 	/**
