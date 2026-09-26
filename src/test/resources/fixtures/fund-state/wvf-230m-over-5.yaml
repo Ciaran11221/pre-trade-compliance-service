@@ -1,0 +1,13 @@
+# Copied from S002-diversification-at-28-5-percent-blocks.yaml
+settings: {}
+fund: {code: WVF, totalAssets: "1000000000", cash: "100000000", diversified: true}
+securities:
+  - {ticker: KSTL, price: "100", votingSharesOutstanding: 50000000, avgDailyVolume: 2000000}
+  - {ticker: TDRA, price: "200", votingSharesOutstanding: 45000000, avgDailyVolume: 1800000}
+  - {ticker: QSTN, price: "460", votingSharesOutstanding: 25000000, avgDailyVolume: 900000}
+holdings:
+  - {ticker: KSTL, quantity: 450000}
+  - {ticker: TDRA, quantity: 575000}
+  - {ticker: QSTN, quantity: 250000}
+restricted: []
+pendingOrders: []

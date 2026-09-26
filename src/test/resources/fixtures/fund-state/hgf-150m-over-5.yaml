@@ -1,0 +1,13 @@
+# Copied from S001-diversification-at-20-5-percent-passes.yaml
+settings: {}
+fund: {code: HGF, totalAssets: "1000000000", cash: "100000000", diversified: true}
+securities:
+  - {ticker: KSTL, price: "100", votingSharesOutstanding: 50000000, avgDailyVolume: 2000000}
+  - {ticker: NRTH, price: "150", votingSharesOutstanding: 40000000, avgDailyVolume: 1500000}
+  - {ticker: VLCN, price: "250", votingSharesOutstanding: 30000000, avgDailyVolume: 1200000}
+holdings:
+  - {ticker: KSTL, quantity: 450000}
+  - {ticker: NRTH, quantity: 500000}
+  - {ticker: VLCN, quantity: 300000}
+restricted: []
+pendingOrders: []
