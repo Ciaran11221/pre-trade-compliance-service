@@ -1,6 +1,11 @@
 spring:
   application:
     name: pre-trade-compliance-service
+  springdoc:
+    api-docs:
+      enabled: false
+    swagger-ui:
+      enabled: false
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/compliance}
     username: ${DB_USER:compliance}
