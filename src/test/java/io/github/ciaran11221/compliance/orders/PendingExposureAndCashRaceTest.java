@@ -145,18 +145,21 @@ class PendingExposureAndCashRaceTest {
 
 	/**
 	 * Spec 3.1: pending exposure is a PASS order not yet filled or cancelled. A second order that
-	 * cannot fit alongside a still-pending first order is BLOCKed; once the first is filled, its
-	 * cash is no longer reserved and an equivalent new order passes. Cancel behaves the same way
-	 * (findPendingOrders excludes FILLED and CANCELLED identically), exercised here in a second,
-	 * independent fund so the two flows cannot interfere with each other's cash.
+	 * cannot fit alongside a still-pending first order is BLOCKed. Once the first is filled, issue
+	 * #21 makes fill genuinely move the cash (fund.cash -= quantity x price), so a THIRD order of the
+	 * SAME size as A still correctly BLOCKs afterwards (A's $60,000,000 is really gone, not merely
+	 * "freed up" the way a cancel frees a reservation -- see the cancel test below for that case). The
+	 * invariant this proves instead: A's value is subtracted from availability exactly ONCE, never
+	 * twice (once as the real cash debit, and AGAIN as if it were still pending) -- a smaller order
+	 * that fits the genuinely-remaining $40,000,000 passes, which a double-count bug (treating A as
+	 * both spent AND still pending) would wrongly BLOCK.
 	 */
 	@Test
 	void pendingExposureStopsCountingOnceAnOrderIsFilled() throws Exception {
 		long fundId = insertRaceFund("PENDFILL1", new BigDecimal("100000000.0000"));
-		// Three DIFFERENT securities, same price/quantity/value, for the same reason as the
-		// concurrent race test above: cash pools fund-wide, but M7b's lookback (issue #14) is keyed
-		// on fund+security, and these three orders would otherwise look like the same order sent
-		// three times.
+		// Three DIFFERENT securities, same price, for the same reason as the concurrent race test
+		// above: cash pools fund-wide, but M7b's lookback (issue #14) is keyed on fund+security, and
+		// these three orders would otherwise look like the same order sent three times.
 		insertRaceSecurity("RACEB1");
 		insertRaceSecurity("RACEB2");
 		insertRaceSecurity("RACEB3");
@@ -172,9 +175,14 @@ class PendingExposureAndCashRaceTest {
 		assertThat(fillResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
 		assertThat(readView(fillResponse).status()).isEqualTo("FILLED");
 
-		OrderView orderAfterFill = readView(post(orderBody("pend-fill-c", fundId, "BUY", "RACEB3", RACE_QUANTITY)));
+		// Half of RACE_QUANTITY: $30,000,000, well within the genuinely-remaining $40,000,000
+		// ($100,000,000 - A's real $60,000,000 debit). A double-count bug (A still subtracted as
+		// pending on top of the real cash debit) would compute available as $40,000,000 -
+		// $60,000,000 = a negative number, wrongly BLOCKing even this smaller order.
+		long thirdOrderQuantity = RACE_QUANTITY / 2;
+		OrderView orderAfterFill = readView(post(orderBody("pend-fill-c", fundId, "BUY", "RACEB3", thirdOrderQuantity)));
 		assertThat(orderAfterFill.decision().outcome())
-			.as("once A is filled, its cash is no longer reserved as pending exposure")
+			.as("A's value is subtracted from availability exactly once: real cash debit, never also pending")
 			.isEqualTo("PASS");
 	}
 
