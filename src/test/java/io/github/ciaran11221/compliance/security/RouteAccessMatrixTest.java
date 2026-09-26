@@ -119,7 +119,10 @@ class RouteAccessMatrixTest {
 	private static final String SUBSTITUTE_ID = "999999";
 
 	private ResponseEntity<String> call(HttpMethod method, String path, String token) {
-		String resolvedPath = path.replace("{id}", SUBSTITUTE_ID);
+		// GET /api/funds/{fundId}/orders (orders package) is the first route whose path variable
+		// isn't named "{id}" -- substituted the same way and for the same reason as "{id}" above,
+		// rather than loosening the check by skipping unresolved braces.
+		String resolvedPath = path.replace("{id}", SUBSTITUTE_ID).replace("{fundId}", SUBSTITUTE_ID);
 		return restClient.method(method)
 			.uri("http://localhost:" + port + resolvedPath)
 			.headers(headers -> headers.setBearerAuth(token))
