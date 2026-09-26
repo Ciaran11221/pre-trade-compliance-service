@@ -52,7 +52,7 @@ The requester never approves their own request. At least one approver is from an
 | `GET /api/me` | any signed-in user |
 | `GET /actuator/health` | public |
 
-Errors are RFC 7807 problem details: 400, 401, 403 with the reason, 404, 409, 422.
+Errors are RFC 7807 problem details: 400, 401, 403 with the reason, 404, 409, 422. A 400 lists every bad field at once in `errors[]`, each with `field` and `message`.
 
 ## Run it
 
@@ -119,6 +119,7 @@ With the service running on the `local` profile, http://localhost:8080/swagger-u
 - A fill applies at one price for the whole quantity.
 - No market data, broker routing, partial fills, notifications, or frontend.
 - Out-of-office status is a flag on the staff table, not a feed from an HR system.
+- A body that is not readable JSON gets 400 before the role check runs, so a caller with the wrong role sees that 400 instead of 403. A readable body with bad values gets 403 first.
 
 ## Roadmap
 
