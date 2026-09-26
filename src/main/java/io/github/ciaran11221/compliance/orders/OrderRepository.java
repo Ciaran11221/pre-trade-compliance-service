@@ -32,12 +32,22 @@ public class OrderRepository {
 	/**
 	 * Decision outcomes that count as "pending exposure" for cash and diversification purposes
 	 * (spec 3.1) while the order carrying that decision is not yet filled or cancelled -- see
-	 * findPendingOrders. This is the one place M7b's quarantine seam (issue #14) needs to touch:
-	 * a quarantined order has no decision row yet (quarantine runs BEFORE the compliance engine),
-	 * so counting it as pending exposure needs a second branch alongside this outcome filter, not
-	 * an addition to this list. See OrderService.submit's SEAM comment for where that plugs in.
+	 * findPendingOrders. M7b's quarantine seam (issue #14) is the second branch findPendingOrders'
+	 * SQL adds alongside this outcome filter: a quarantined order has no decision row yet
+	 * (quarantine runs BEFORE the compliance engine), so it is picked up by checking the quarantine
+	 * table directly (open, i.e. not yet resolved and not past its expiry) rather than by widening
+	 * this list.
 	 */
 	public static final List<String> PENDING_EXPOSURE_OUTCOMES = List.of("PASS");
+
+	/** Quarantine reasons that still count as "open" (spec 3.3): not yet resolved either way. */
+	private static final String QUARANTINE_RESOLUTION_TABLE_EXISTS_CLAUSE = """
+			EXISTS (
+			    SELECT 1 FROM quarantine q
+			    WHERE q.order_id = o.id AND q.expires_at > ?
+			      AND NOT EXISTS (SELECT 1 FROM quarantine_resolution qr WHERE qr.quarantine_id = q.id)
+			)
+			""";
 
 	private static final List<String> TERMINAL_EVENT_TYPES = List.of("FILLED", "CANCELLED");
 
@@ -65,6 +75,21 @@ public class OrderRepository {
 
 	public record RuleResultRow(long id, long decisionId, String ruleName, String outcome, String reason,
 			BigDecimal measuredValue, BigDecimal limitValue) {
+	}
+
+	/**
+	 * A trade_order row from the lookback window (spec 3.1/3.3, issue #14), together with the one
+	 * fact OrderService.checkQuarantine needs to decide whether it still counts: whether it has
+	 * already been resolved as CANCELLED, REJECTED or EXPIRED (in which case it is excluded, per the
+	 * design's "not rejected/expired/cancelled") -- BLOCK and PASS/REVIEW orders still count, since
+	 * neither is "rejected" in this sense.
+	 */
+	public record RecentOrderRow(long id, String side, long quantity, String submittedBy, Instant submittedAt,
+			boolean excludedFromLookback) {
+	}
+
+	public record QuarantineRow(long id, long orderId, String reason, Long matchedOrderId, Instant quarantinedAt,
+			Instant expiresAt, String assignedTo) {
 	}
 
 	/**
@@ -153,29 +178,38 @@ public class OrderRepository {
 	}
 
 	/**
-	 * Orders for this fund whose decision outcome is still in PENDING_EXPOSURE_OUTCOMES and that
-	 * have not since been filled or cancelled (order_event carries no update, so "not yet filled or
-	 * cancelled" is simply "no FILLED/CANCELLED event exists for this order").
+	 * Orders for this fund that count as pending exposure (spec 3.1, spec 3.3's "d"): either
+	 * decided PASS and not yet filled or cancelled, OR still quarantined and open (not resolved,
+	 * and not past its expiry -- an overdue-but-unresolved quarantine is treated as expired here
+	 * exactly as every other read does, per issue #14's "correctness never depends on the job").
+	 * excludeOrderId leaves one order's own row out of its own pending-exposure read -- needed when
+	 * releasing a quarantined order re-evaluates it against every OTHER pending order, never itself
+	 * (it is still sitting in the quarantine table, open, at the moment its own release computes
+	 * this); -1 (no real order has that id) is passed by every caller with nothing to exclude.
 	 */
-	public List<OrderContext.PendingOrder> findPendingOrders(long fundId) {
+	public List<OrderContext.PendingOrder> findPendingOrders(long fundId, Instant now, long excludeOrderId) {
 		String outcomePlaceholders = PENDING_EXPOSURE_OUTCOMES.stream().map(o -> "?").collect(Collectors.joining(","));
 		String terminalPlaceholders = TERMINAL_EVENT_TYPES.stream().map(o -> "?").collect(Collectors.joining(","));
 		String sql = """
 				SELECT o.side, s.ticker, o.quantity, o.reference_price
 				FROM trade_order o
-				JOIN decision d ON d.order_id = o.id
 				JOIN security s ON s.id = o.security_id
 				WHERE o.fund_id = ?
-				  AND d.outcome IN (%s)
-				  AND NOT EXISTS (
-				      SELECT 1 FROM order_event oe
-				      WHERE oe.order_id = o.id AND oe.event_type IN (%s)
+				  AND o.id <> ?
+				  AND (
+				    (EXISTS (SELECT 1 FROM decision d WHERE d.order_id = o.id AND d.outcome IN (%s))
+				     AND NOT EXISTS (
+				         SELECT 1 FROM order_event oe WHERE oe.order_id = o.id AND oe.event_type IN (%s)
+				     ))
+				    OR %s
 				  )
-				""".formatted(outcomePlaceholders, terminalPlaceholders);
+				""".formatted(outcomePlaceholders, terminalPlaceholders, QUARANTINE_RESOLUTION_TABLE_EXISTS_CLAUSE);
 		List<Object> args = new ArrayList<>();
 		args.add(fundId);
+		args.add(excludeOrderId);
 		args.addAll(PENDING_EXPOSURE_OUTCOMES);
 		args.addAll(TERMINAL_EVENT_TYPES);
+		args.add(Timestamp.from(now));
 		return jdbcTemplate.query(sql,
 				(rs, rowNum) -> new OrderContext.PendingOrder(OrderContext.Side.valueOf(rs.getString("side")),
 						rs.getString("ticker"), rs.getLong("quantity"), rs.getBigDecimal("reference_price")),
@@ -296,12 +330,103 @@ public class OrderRepository {
 				decisionId);
 	}
 
-	/** The most recent order_event's type for this order: DECIDED, FILLED or CANCELLED in M7a. */
+	/**
+	 * The most recent order_event's type for this order: DECIDED, FILLED, CANCELLED (M7a) or
+	 * QUARANTINED, RELEASED, REJECTED, EXPIRED (M7b, issue #14).
+	 */
 	public Optional<String> findLatestEventType(long orderId) {
 		List<String> result = jdbcTemplate.query(
 				"SELECT event_type FROM order_event WHERE order_id = ? ORDER BY occurred_at DESC, id DESC LIMIT 1",
 				(rs, rowNum) -> rs.getString("event_type"), orderId);
 		return result.stream().findFirst();
+	}
+
+	// ---- M7b (quarantine, issue #14) ----
+
+	/**
+	 * Every order on this fund+security submitted no earlier than since and no later than now, for
+	 * OrderService.checkQuarantine's lookback (spec 3.1/3.3): same fund + security, not
+	 * rejected/expired/cancelled. "<= now" rather than "&lt; now": the order under consideration is
+	 * not inserted yet at the point this runs, so every row returned here is already an earlier
+	 * order regardless of ties -- and a test clock that has not moved between two submissions (no
+	 * sleeping, per this repo's rules) makes exact ties routine, not an edge case to special-case
+	 * away. "Not rejected/expired/cancelled" is computed per row here (rather
+	 * than left to the caller) because it needs the same three-table join
+	 * (order_event/quarantine/quarantine_resolution) OrderService.deriveStatus uses to derive a
+	 * status, and doing it once in SQL is simpler than re-deriving each candidate's status in Java.
+	 * An overdue-but-unresolved quarantine is treated as expired here too, consistent with every
+	 * other read (issue #14: "correctness never depends on the job").
+	 */
+	public List<RecentOrderRow> findRecentOrdersForLookback(long fundId, long securityId, Instant since, Instant now) {
+		return jdbcTemplate.query("""
+				SELECT o.id, o.side, o.quantity, o.submitted_by, o.submitted_at,
+				  (
+				    EXISTS (SELECT 1 FROM order_event oe WHERE oe.order_id = o.id AND oe.event_type = 'CANCELLED')
+				    OR EXISTS (
+				        SELECT 1 FROM order_event oe WHERE oe.order_id = o.id AND oe.event_type = 'REJECTED'
+				    )
+				    OR EXISTS (
+				        SELECT 1 FROM quarantine q JOIN quarantine_resolution qr ON qr.quarantine_id = q.id
+				        WHERE q.order_id = o.id AND qr.resolution = 'EXPIRED'
+				    )
+				    OR EXISTS (
+				        SELECT 1 FROM quarantine q
+				        WHERE q.order_id = o.id AND q.expires_at <= ?
+				          AND NOT EXISTS (SELECT 1 FROM quarantine_resolution qr WHERE qr.quarantine_id = q.id)
+				    )
+				  ) AS excluded_from_lookback
+				FROM trade_order o
+				WHERE o.fund_id = ? AND o.security_id = ? AND o.submitted_at >= ? AND o.submitted_at <= ?
+				ORDER BY o.submitted_at ASC, o.id ASC
+				""",
+				(rs, rowNum) -> new RecentOrderRow(rs.getLong("id"), rs.getString("side"), rs.getLong("quantity"),
+						rs.getString("submitted_by"), rs.getTimestamp("submitted_at").toInstant(),
+						rs.getBoolean("excluded_from_lookback")),
+				Timestamp.from(now), fundId, securityId, Timestamp.from(since), Timestamp.from(now));
+	}
+
+	/**
+	 * Records a new quarantine (spec 3.3): reason, the earlier order it matched (null for
+	 * SENDER_OUT_OF_OFFICE), when it expires, and its escalation assignee (null if none was found --
+	 * "recorded as unassigned", still queryable as such).
+	 */
+	public long insertQuarantine(long orderId, String reason, Long matchedOrderId, Instant quarantinedAt,
+			Instant expiresAt, String assignedTo) {
+		return jdbcTemplate.queryForObject("""
+				INSERT INTO quarantine (order_id, reason, matched_order_id, quarantined_at, expires_at, assigned_to)
+				VALUES (?, ?, ?, ?, ?, ?) RETURNING id
+				""", Long.class, orderId, reason, matchedOrderId, Timestamp.from(quarantinedAt),
+				Timestamp.from(expiresAt), assignedTo);
+	}
+
+	public Optional<QuarantineRow> findQuarantineByOrderId(long orderId) {
+		return jdbcTemplate.query("""
+				SELECT id, order_id, reason, matched_order_id, quarantined_at, expires_at, assigned_to
+				FROM quarantine WHERE order_id = ?
+				""", this::mapQuarantine, orderId).stream().findFirst();
+	}
+
+	private QuarantineRow mapQuarantine(ResultSet rs, int rowNum) throws SQLException {
+		long matched = rs.getLong("matched_order_id");
+		return new QuarantineRow(rs.getLong("id"), rs.getLong("order_id"), rs.getString("reason"),
+				rs.wasNull() ? null : matched, rs.getTimestamp("quarantined_at").toInstant(),
+				rs.getTimestamp("expires_at").toInstant(), rs.getString("assigned_to"));
+	}
+
+	/**
+	 * OrderService.deriveStatus's one quarantine-table read: whether this order is currently
+	 * quarantined and unresolved, and if so, its expiry -- so a GET can compute EXPIRED on the fly
+	 * without waiting for QuarantineExpiryJob (issue #14). Empty once a resolution row exists (the
+	 * order_event RELEASED/REJECTED/EXPIRED that resolution came with is by then the latest event,
+	 * so deriveStatus never needs this path for a resolved quarantine).
+	 */
+	public Optional<Instant> findOpenQuarantineExpiry(long orderId) {
+		return jdbcTemplate.query("""
+				SELECT q.expires_at FROM quarantine q
+				WHERE q.order_id = ? AND NOT EXISTS (
+				    SELECT 1 FROM quarantine_resolution qr WHERE qr.quarantine_id = q.id
+				)
+				""", (rs, rowNum) -> rs.getTimestamp("expires_at").toInstant(), orderId).stream().findFirst();
 	}
 
 }

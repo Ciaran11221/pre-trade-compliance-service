@@ -6,6 +6,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
@@ -22,6 +23,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import tools.jackson.databind.ObjectMapper;
 
+import io.github.ciaran11221.compliance.reference.Staff;
+import io.github.ciaran11221.compliance.reference.StaffRepository;
 import io.github.ciaran11221.compliance.rules.ComplianceEngine;
 import io.github.ciaran11221.compliance.rules.LimitKey;
 import io.github.ciaran11221.compliance.rules.Limits;
@@ -47,15 +50,19 @@ public class OrderService {
 
 	private final ComplianceEngine complianceEngine;
 
+	private final StaffRepository staffRepository;
+
 	private final Clock clock;
 
 	private final ObjectMapper objectMapper;
 
 	public OrderService(OrderRepository orderRepository, LimitsRepository limitsRepository,
-			ComplianceEngine complianceEngine, Clock clock, ObjectMapper objectMapper) {
+			ComplianceEngine complianceEngine, StaffRepository staffRepository, Clock clock,
+			ObjectMapper objectMapper) {
 		this.orderRepository = orderRepository;
 		this.limitsRepository = limitsRepository;
 		this.complianceEngine = complianceEngine;
+		this.staffRepository = staffRepository;
 		this.clock = clock;
 		this.objectMapper = objectMapper;
 	}
@@ -112,18 +119,18 @@ public class OrderService {
 			return replay(existing.get(), hash);
 		}
 
-		// SEAM for M7b (quarantine, issue #14): sender-out-of-office and lookback/duplicate checks
-		// plug in here, between the fund lock/idempotency check above and the compliance engine
-		// below. Both need the fund lock already held (they read this fund's recent/pending orders)
-		// and must run before the engine, per spec 3.1's order-flow diagram. No-op in M7a: every
-		// order that reaches this point goes straight to the engine.
-
 		OrderRepository.SecurityRow security = orderRepository.findSecurityByTicker(ticker)
 			.orElseThrow(() -> OrdersProblems.notFound("no security with ticker " + ticker));
 
 		Instant now = clock.instant();
-		OrderContext context = buildContext(fund, side, ticker, quantity, security.price());
-		ComplianceEngine.EngineResult result = complianceEngine.evaluate(context);
+		Limits limits = limitsRepository.activeLimits();
+
+		// SEAM for M7b (quarantine, issue #14), now filled in: sender-out-of-office and
+		// lookback/duplicate checks run here, between the fund lock/idempotency check above and the
+		// compliance engine below -- both need the fund lock already held (they read this fund's
+		// recent/pending orders) and must run before the engine, per spec 3.1's order-flow diagram.
+		Optional<QuarantineDecision> quarantineDecision = checkQuarantine(fundId, security.id(), submitterId, side,
+				quantity, now, limits);
 
 		Optional<Long> inserted = orderRepository.insertOrder(clientOrderId, fundId, security.id(), side, quantity,
 				security.price(), submitterId, now, hash);
@@ -137,7 +144,43 @@ public class OrderService {
 		}
 		long orderId = inserted.get();
 
-		orderRepository.insertOrderEvent(orderId, "DECIDED", submitterId, now, "{}");
+		if (quarantineDecision.isPresent()) {
+			recordQuarantine(orderId, submitterId, now, limits, quarantineDecision.get());
+			return buildOrderView(orderId);
+		}
+
+		OrderContext context = buildContext(fund, side, ticker, quantity, security.price(), limits, now, -1L);
+		runEngineAndStoreDecision(orderId, context, submitterId, now);
+
+		return buildOrderView(orderId);
+	}
+
+	/**
+	 * Reuse point for QuarantineService.release() (issue #14's "reuse, don't duplicate, the
+	 * decision-storing code"): runs the same compliance engine over the same kind of context submit()
+	 * builds, then stores the decision the same way. The caller (QuarantineService) is responsible
+	 * for everything release-specific: locking the quarantine row, the sender/out-of-office checks,
+	 * and taking the fund lock (OrderRepository.lockFund) before calling this -- trap #7's "release
+	 * must take the SAME fund row lock order intake takes before reading pending exposure" is
+	 * satisfied by the caller passing a FundRow read under that lock, not by anything in here.
+	 * excludeOrderId is always this order's own id: it is still sitting in the quarantine table as
+	 * "open" at the moment release reads pending exposure (its own resolution row has not been
+	 * inserted yet), so without this it would count its own quantity against itself. actor is
+	 * recorded on the DECIDED event this writes -- the releasing supervisor, not the original sender.
+	 */
+	@Transactional
+	public OrderView decideAndRecord(OrderRepository.FundRow fund, long orderId, OrderContext.Side side,
+			String ticker, long quantity, BigDecimal referencePrice, String actor, Instant now) {
+		Limits limits = limitsRepository.activeLimits();
+		OrderContext context = buildContext(fund, side, ticker, quantity, referencePrice, limits, now, orderId);
+		runEngineAndStoreDecision(orderId, context, actor, now);
+		return buildOrderView(orderId);
+	}
+
+	private void runEngineAndStoreDecision(long orderId, OrderContext context, String actor, Instant now) {
+		ComplianceEngine.EngineResult result = complianceEngine.evaluate(context);
+
+		orderRepository.insertOrderEvent(orderId, "DECIDED", actor, now, "{}");
 
 		String settingsJson = writeJson(settingsSnapshot(context.limits()));
 		String inputsJson = writeJson(inputsSnapshot(context));
@@ -147,8 +190,121 @@ public class OrderService {
 			orderRepository.insertRuleResult(decisionId, ruleResult.ruleName(), ruleResult.outcome().name(),
 					ruleResult.reason(), ruleResult.measuredValue(), ruleResult.limitValue());
 		}
+	}
 
-		return buildOrderView(orderId);
+	/**
+	 * One quarantine reason and, for POSSIBLE_DUPLICATE/OPPOSITE_SIDE, the earlier order it matched
+	 * (spec 3.3). Package-visible only: an implementation detail of checkQuarantine/recordQuarantine,
+	 * never returned from this service.
+	 */
+	private record QuarantineDecision(String reason, Long matchedOrderId) {
+	}
+
+	/**
+	 * Spec 3.1/3.3, issue #14: (a) a sender marked out of office right now is quarantined outright;
+	 * (b) otherwise, look back LOOKBACK_MINUTES on this fund+security for an order that is not
+	 * rejected/expired/cancelled -- same side and quantity within SIMILARITY_PCT is
+	 * POSSIBLE_DUPLICATE, opposite side (any quantity) is OPPOSITE_SIDE. This applies regardless of
+	 * whether the same person sent both orders ("applies whoever sent the earlier order"): sender
+	 * identity is never part of this check, only of the out-of-office check and of who may later
+	 * release it.
+	 */
+	private Optional<QuarantineDecision> checkQuarantine(long fundId, long securityId, String submitterId,
+			OrderContext.Side side, long quantity, Instant now, Limits limits) {
+		Staff sender = staffRepository.findById(submitterId).orElse(null);
+		if (sender != null && isOutOfOffice(sender, now)) {
+			return Optional.of(new QuarantineDecision("SENDER_OUT_OF_OFFICE", null));
+		}
+
+		long lookbackMinutes = limits.get(LimitKey.LOOKBACK_MINUTES).longValueExact();
+		Instant since = now.minus(lookbackMinutes, ChronoUnit.MINUTES);
+		BigDecimal similarityPct = limits.get(LimitKey.SIMILARITY_PCT);
+
+		for (OrderRepository.RecentOrderRow candidate : orderRepository.findRecentOrdersForLookback(fundId,
+				securityId, since, now)) {
+			if (candidate.excludedFromLookback()) {
+				continue;
+			}
+			if (!candidate.side().equals(side.name())) {
+				return Optional.of(new QuarantineDecision("OPPOSITE_SIDE", candidate.id()));
+			}
+			if (isSimilarQuantity(candidate.quantity(), quantity, similarityPct)) {
+				return Optional.of(new QuarantineDecision("POSSIBLE_DUPLICATE", candidate.id()));
+			}
+		}
+		return Optional.empty();
+	}
+
+	/**
+	 * |q2 - q1| x 100 <= SIMILARITY_PCT x q1 (trap #3: never divide before comparing). q1 is the
+	 * earlier order's quantity, q2 the new one.
+	 */
+	private boolean isSimilarQuantity(long q1, long q2, BigDecimal similarityPct) {
+		BigDecimal difference = BigDecimal.valueOf(Math.abs(q2 - q1)).multiply(new BigDecimal("100"));
+		BigDecimal bound = similarityPct.multiply(BigDecimal.valueOf(q1));
+		return difference.compareTo(bound) <= 0;
+	}
+
+	/** From <= now < until (same reading LimitChangeService.isOutOfOffice uses). */
+	private boolean isOutOfOffice(Staff staff, Instant now) {
+		return staff.getOutOfOfficeFrom() != null && staff.getOutOfOfficeUntil() != null
+				&& !now.isBefore(staff.getOutOfOfficeFrom()) && now.isBefore(staff.getOutOfOfficeUntil());
+	}
+
+	/**
+	 * Writes the quarantine row, its QUARANTINED event, and its escalation assignment (spec 3.3):
+	 * eligible releasers are SUPERVISORs who are not the sender, not the sender's own backup (the
+	 * backup is deliberately held out of this general pool and checked next -- see the class
+	 * Javadoc-style note below), and not out of office. If that pool is empty, the sender's backup
+	 * is assigned if in office; failing that, any in-office COMPLIANCE user; failing that, the
+	 * quarantine is recorded unassigned. Nothing is sent (spec 3.3): this only ever writes a row.
+	 *
+	 * <p>
+	 * Design note on the backup exclusion: if the backup were left in the general SUPERVISOR pool,
+	 * an in-office backup who also happens to be a plain SUPERVISOR would already satisfy "eligible
+	 * releasers is non-empty", so the backup branch below could never fire while its own named
+	 * backup is in office -- the one case the spec describes it for. Holding the backup out of the
+	 * general pool and checking them second is what makes the escalation hierarchy in spec 3.3
+	 * (general pool, then backup, then compliance, then unassigned) actually reachable in that order.
+	 */
+	private void recordQuarantine(long orderId, String submitterId, Instant now, Limits limits,
+			QuarantineDecision decision) {
+		String assignedTo = resolveAssignee(submitterId, now);
+
+		long expiryMinutes = limits.get(LimitKey.QUARANTINE_EXPIRY_MINUTES).longValueExact();
+		Instant expiresAt = now.plus(expiryMinutes, ChronoUnit.MINUTES);
+
+		orderRepository.insertOrderEvent(orderId, "QUARANTINED", submitterId, now, "{}");
+		orderRepository.insertQuarantine(orderId, decision.reason(), decision.matchedOrderId(), now, expiresAt,
+				assignedTo);
+	}
+
+	private String resolveAssignee(String submitterId, Instant now) {
+		Optional<Staff> sender = staffRepository.findById(submitterId);
+		String backupId = sender.map(Staff::getBackupStaff).map(Staff::getId).orElse(null);
+
+		List<Staff> supervisors = staffRepository.findByRoleOrderById("SUPERVISOR");
+		boolean eligibleReleaserInOffice = supervisors.stream()
+			.filter(s -> !s.getId().equals(submitterId))
+			.filter(s -> backupId == null || !s.getId().equals(backupId))
+			.anyMatch(s -> !isOutOfOffice(s, now));
+		if (eligibleReleaserInOffice) {
+			return null;
+		}
+
+		if (backupId != null) {
+			Staff backup = staffRepository.findById(backupId).orElse(null);
+			if (backup != null && !isOutOfOffice(backup, now)) {
+				return backupId;
+			}
+		}
+
+		return staffRepository.findByRoleOrderById("COMPLIANCE")
+			.stream()
+			.filter(s -> !isOutOfOffice(s, now))
+			.map(Staff::getId)
+			.findFirst()
+			.orElse(null);
 	}
 
 	@Transactional(readOnly = true)
@@ -223,10 +379,28 @@ public class OrderService {
 		OrderRepository.OrderRow order = orderRepository.findOrder(orderId).orElseThrow();
 		String status = deriveStatus(orderId);
 		DecisionView decision = orderRepository.findDecisionByOrderId(orderId).map(this::toDecisionView).orElse(null);
+		QuarantineSummaryView quarantine = orderRepository.findQuarantineByOrderId(orderId)
+			.map(this::toQuarantineView)
+			.orElse(null);
 		return new OrderView(order.id(), order.clientOrderId(), order.fundId(), order.side(), order.ticker(),
-				order.quantity(), order.referencePrice(), order.submittedBy(), order.submittedAt(), status, decision);
+				order.quantity(), order.referencePrice(), order.submittedBy(), order.submittedAt(), status, decision,
+				quarantine);
 	}
 
+	private QuarantineSummaryView toQuarantineView(OrderRepository.QuarantineRow row) {
+		return new QuarantineSummaryView(row.reason(), row.matchedOrderId(), row.assignedTo(), row.quarantinedAt(),
+				row.expiresAt());
+	}
+
+	/**
+	 * DECIDED/FILLED/CANCELLED are unchanged from M7a. QUARANTINED (issue #14) is the one status
+	 * that is never simply "the latest event": every read has to treat an overdue, still-open
+	 * quarantine as EXPIRED itself, on the clock alone, rather than waiting for QuarantineExpiryJob
+	 * to write that row (spec 3.3, "correctness never depends on the job's timing") -- see
+	 * OrderRepository.findOpenQuarantineExpiry. Once release (RELEASED then DECIDED) or reject
+	 * (REJECTED) or the job (EXPIRED) has actually written its event, that event is the latest one
+	 * and this method never reaches the quarantine branch below for that order again.
+	 */
 	private String deriveStatus(long orderId) {
 		String latestEvent = orderRepository.findLatestEventType(orderId)
 			.orElseThrow(() -> new IllegalStateException("order " + orderId + " has no events at all"));
@@ -236,7 +410,13 @@ public class OrderService {
 		if ("DECIDED".equals(latestEvent)) {
 			return orderRepository.findDecisionByOrderId(orderId).orElseThrow().outcome();
 		}
-		// M7b statuses (QUARANTINED, RELEASED, REJECTED, EXPIRED): reported as-is.
+		if ("QUARANTINED".equals(latestEvent)) {
+			boolean overdue = orderRepository.findOpenQuarantineExpiry(orderId)
+				.map(expiresAt -> !clock.instant().isBefore(expiresAt))
+				.orElse(false);
+			return overdue ? "EXPIRED" : "QUARANTINED";
+		}
+		// REJECTED: reported as-is (RELEASED never appears here -- see the Javadoc above).
 		return latestEvent;
 	}
 
@@ -249,13 +429,19 @@ public class OrderService {
 				readJson(decisionRow.settingsSnapshot()), readJson(decisionRow.inputsSnapshot()));
 	}
 
+	/**
+	 * excludeOrderId leaves one order's own row out of its own pending-exposure read -- see
+	 * OrderRepository.findPendingOrders and decideAndRecord's Javadoc. submit() passes -1 (no real
+	 * order has that id, and the order being submitted is not yet inserted at the point this is
+	 * called anyway).
+	 */
 	private OrderContext buildContext(OrderRepository.FundRow fund, OrderContext.Side side, String ticker,
-			long quantity, BigDecimal referencePrice) {
+			long quantity, BigDecimal referencePrice, Limits limits, Instant now, long excludeOrderId) {
 		Map<String, Long> holdings = orderRepository.findHoldings(fund.id());
 		Map<String, OrderContext.SecurityInfo> securities = orderRepository.findAllSecurityInfo();
 		Set<String> restricted = orderRepository.findRestrictedTickers();
-		List<OrderContext.PendingOrder> pendingOrders = orderRepository.findPendingOrders(fund.id());
-		Limits limits = limitsRepository.activeLimits();
+		List<OrderContext.PendingOrder> pendingOrders = orderRepository.findPendingOrders(fund.id(), now,
+				excludeOrderId);
 
 		OrderContext.Fund contextFund = new OrderContext.Fund(fund.totalAssets(), fund.cash(), fund.diversified());
 		OrderContext.Order order = new OrderContext.Order(side, ticker, quantity, referencePrice);

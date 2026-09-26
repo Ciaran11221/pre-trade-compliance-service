@@ -100,10 +100,16 @@ class PendingExposureAndCashRaceTest {
 	@Test
 	void twoUnaffordableTogetherBuysProduceExactlyOnePassAndOneBlock() throws Exception {
 		long fundId = insertRaceFund("CASHRACE1", new BigDecimal("100000000.0000"));
+		// Two DIFFERENT securities, same price/quantity/value: the cash rule pools pending buys
+		// fund-wide regardless of ticker (see CashRule), so the race is unaffected, but M7b's
+		// lookback (issue #14) only ever compares orders on the SAME fund+security -- using one
+		// ticker per order keeps this test about the fund lock/cash race, not about triggering
+		// possible-duplicate quarantine on two orders that would otherwise look identical.
 		insertRaceSecurity("RACEA");
+		insertRaceSecurity("RACEA2");
 
 		Map<String, Object> bodyA = orderBody("race-a", fundId, "BUY", "RACEA", RACE_QUANTITY);
-		Map<String, Object> bodyB = orderBody("race-b", fundId, "BUY", "RACEA", RACE_QUANTITY);
+		Map<String, Object> bodyB = orderBody("race-b", fundId, "BUY", "RACEA2", RACE_QUANTITY);
 
 		CyclicBarrier barrier = new CyclicBarrier(2);
 		ExecutorService pool = Executors.newFixedThreadPool(2);
@@ -147,12 +153,18 @@ class PendingExposureAndCashRaceTest {
 	@Test
 	void pendingExposureStopsCountingOnceAnOrderIsFilled() throws Exception {
 		long fundId = insertRaceFund("PENDFILL1", new BigDecimal("100000000.0000"));
-		insertRaceSecurity("RACEB");
+		// Three DIFFERENT securities, same price/quantity/value, for the same reason as the
+		// concurrent race test above: cash pools fund-wide, but M7b's lookback (issue #14) is keyed
+		// on fund+security, and these three orders would otherwise look like the same order sent
+		// three times.
+		insertRaceSecurity("RACEB1");
+		insertRaceSecurity("RACEB2");
+		insertRaceSecurity("RACEB3");
 
-		OrderView orderA = readView(post(orderBody("pend-fill-a", fundId, "BUY", "RACEB", RACE_QUANTITY)));
+		OrderView orderA = readView(post(orderBody("pend-fill-a", fundId, "BUY", "RACEB1", RACE_QUANTITY)));
 		assertThat(orderA.decision().outcome()).as("first order, alone, must fit under cash").isEqualTo("PASS");
 
-		OrderView orderBlocked = readView(post(orderBody("pend-fill-b", fundId, "BUY", "RACEB", RACE_QUANTITY)));
+		OrderView orderBlocked = readView(post(orderBody("pend-fill-b", fundId, "BUY", "RACEB2", RACE_QUANTITY)));
 		assertThat(orderBlocked.decision().outcome()).as("second order must be blocked while A is still pending")
 			.isEqualTo("BLOCK");
 
@@ -160,7 +172,7 @@ class PendingExposureAndCashRaceTest {
 		assertThat(fillResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
 		assertThat(readView(fillResponse).status()).isEqualTo("FILLED");
 
-		OrderView orderAfterFill = readView(post(orderBody("pend-fill-c", fundId, "BUY", "RACEB", RACE_QUANTITY)));
+		OrderView orderAfterFill = readView(post(orderBody("pend-fill-c", fundId, "BUY", "RACEB3", RACE_QUANTITY)));
 		assertThat(orderAfterFill.decision().outcome())
 			.as("once A is filled, its cash is no longer reserved as pending exposure")
 			.isEqualTo("PASS");
@@ -169,19 +181,21 @@ class PendingExposureAndCashRaceTest {
 	@Test
 	void pendingExposureStopsCountingOnceAnOrderIsCancelled() throws Exception {
 		long fundId = insertRaceFund("PENDCANCEL1", new BigDecimal("100000000.0000"));
-		insertRaceSecurity("RACEC");
+		insertRaceSecurity("RACEC1");
+		insertRaceSecurity("RACEC2");
+		insertRaceSecurity("RACEC3");
 
-		OrderView orderA = readView(post(orderBody("pend-cancel-a", fundId, "BUY", "RACEC", RACE_QUANTITY)));
+		OrderView orderA = readView(post(orderBody("pend-cancel-a", fundId, "BUY", "RACEC1", RACE_QUANTITY)));
 		assertThat(orderA.decision().outcome()).isEqualTo("PASS");
 
-		OrderView orderBlocked = readView(post(orderBody("pend-cancel-b", fundId, "BUY", "RACEC", RACE_QUANTITY)));
+		OrderView orderBlocked = readView(post(orderBody("pend-cancel-b", fundId, "BUY", "RACEC2", RACE_QUANTITY)));
 		assertThat(orderBlocked.decision().outcome()).isEqualTo("BLOCK");
 
 		ResponseEntity<String> cancelResponse = cancel(orderA.id());
 		assertThat(cancelResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
 		assertThat(readView(cancelResponse).status()).isEqualTo("CANCELLED");
 
-		OrderView orderAfterCancel = readView(post(orderBody("pend-cancel-c", fundId, "BUY", "RACEC", RACE_QUANTITY)));
+		OrderView orderAfterCancel = readView(post(orderBody("pend-cancel-c", fundId, "BUY", "RACEC3", RACE_QUANTITY)));
 		assertThat(orderAfterCancel.decision().outcome())
 			.as("once A is cancelled, its cash is no longer reserved as pending exposure")
 			.isEqualTo("PASS");

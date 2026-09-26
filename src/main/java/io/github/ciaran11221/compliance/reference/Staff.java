@@ -23,6 +23,12 @@ public class Staff {
 	@Column(nullable = false)
 	private String team;
 
+	// M7b (issue #14): the fact of a role, on the person, not on any one token -- see
+	// V5__staff_role.sql's javadoc-style comment for why escalation needs this and token roles
+	// cannot supply it. One of TRADER, SUPERVISOR, COMPLIANCE, EXECUTIVE (V5's CHECK constraint).
+	@Column(nullable = false)
+	private String role;
+
 	@ManyToOne(fetch = FetchType.LAZY)
 	@JoinColumn(name = "backup_staff_id")
 	private Staff backupStaff;
@@ -36,11 +42,12 @@ public class Staff {
 	protected Staff() {
 	}
 
-	public Staff(String id, String name, String team, Staff backupStaff, Instant outOfOfficeFrom,
+	public Staff(String id, String name, String team, String role, Staff backupStaff, Instant outOfOfficeFrom,
 			Instant outOfOfficeUntil) {
 		this.id = id;
 		this.name = name;
 		this.team = team;
+		this.role = role;
 		this.backupStaff = backupStaff;
 		this.outOfOfficeFrom = outOfOfficeFrom;
 		this.outOfOfficeUntil = outOfOfficeUntil;
@@ -58,6 +65,10 @@ public class Staff {
 		return team;
 	}
 
+	public String getRole() {
+		return role;
+	}
+
 	public Staff getBackupStaff() {
 		return backupStaff;
 	}
@@ -68,6 +79,17 @@ public class Staff {
 
 	public Instant getOutOfOfficeUntil() {
 		return outOfOfficeUntil;
+	}
+
+	/**
+	 * Staff is mutable reference data (spec 3.7), unlike every audit table -- setters here back
+	 * PUT /api/staff/{id}/out-of-office (M7b, issue #14), a plain UPDATE through JPA's own dirty
+	 * checking on a managed entity, rather than a raw JdbcTemplate statement (StaffRepository is a
+	 * JpaRepository; there is no insert-only repository pattern to match here).
+	 */
+	public void setOutOfOffice(Instant outOfOfficeFrom, Instant outOfOfficeUntil) {
+		this.outOfOfficeFrom = outOfOfficeFrom;
+		this.outOfOfficeUntil = outOfOfficeUntil;
 	}
 
 }

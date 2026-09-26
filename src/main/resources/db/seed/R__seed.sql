@@ -81,15 +81,16 @@ ON CONFLICT DO NOTHING;
 -- sup-3 is a third desk-a supervisor, added for the limit-change "different-team" scenario (M6):
 -- that scenario needs two DISTINCT approvers who share the requester's team, and desk-a otherwise
 -- has only two members (anne and sup-1), one of whom would have to be the requester.
-INSERT INTO staff (id, name, team, backup_staff_id, out_of_office_from, out_of_office_until) VALUES
-    ('sup-1', 'Siobhan Nagle', 'desk-a', NULL, NULL, NULL),
-    ('sup-2', 'Malachy Ferris', 'desk-b', NULL, NULL, NULL),
-    ('sup-3', 'Fiachra Bellew', 'desk-a', NULL, NULL, NULL),
-    ('comp-1', 'Orla Whitfield', 'compliance', NULL, NULL, NULL),
-    ('exec-1', 'Declan Yorath', 'executive', NULL, NULL, NULL)
+-- role (M7b, issue #14): see V5__staff_role.sql for why this lives on the staff row.
+INSERT INTO staff (id, name, team, backup_staff_id, out_of_office_from, out_of_office_until, role) VALUES
+    ('sup-1', 'Siobhan Nagle', 'desk-a', NULL, NULL, NULL, 'SUPERVISOR'),
+    ('sup-2', 'Malachy Ferris', 'desk-b', NULL, NULL, NULL, 'SUPERVISOR'),
+    ('sup-3', 'Fiachra Bellew', 'desk-a', NULL, NULL, NULL, 'SUPERVISOR'),
+    ('comp-1', 'Orla Whitfield', 'compliance', NULL, NULL, NULL, 'COMPLIANCE'),
+    ('exec-1', 'Declan Yorath', 'executive', NULL, NULL, NULL, 'EXECUTIVE')
 ON CONFLICT DO NOTHING;
 
-INSERT INTO staff (id, name, team, backup_staff_id, out_of_office_from, out_of_office_until) VALUES
-    ('anne', 'Anne Colquhoun', 'desk-a', 'sup-2', NULL, NULL),
-    ('brian', 'Brian Meath', 'desk-b', NULL, NULL, NULL)
+INSERT INTO staff (id, name, team, backup_staff_id, out_of_office_from, out_of_office_until, role) VALUES
+    ('anne', 'Anne Colquhoun', 'desk-a', 'sup-2', NULL, NULL, 'TRADER'),
+    ('brian', 'Brian Meath', 'desk-b', NULL, NULL, NULL, 'TRADER')
 ON CONFLICT DO NOTHING;
