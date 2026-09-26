@@ -1,11 +1,6 @@
 spring:
   application:
     name: pre-trade-compliance-service
-  springdoc:
-    api-docs:
-      enabled: false
-    swagger-ui:
-      enabled: false
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/compliance}
     username: ${DB_USER:compliance}
@@ -45,3 +40,11 @@ management:
     health:
       probes:
         enabled: true
+
+# Swagger page and API description: off by default, on only in application-local.yml.
+# Top-level key: springdoc does not read spring.springdoc.*
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
