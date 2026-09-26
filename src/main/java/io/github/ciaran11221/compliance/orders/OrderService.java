@@ -323,28 +323,112 @@ public class OrderService {
 		return new PagedOrders(views, safePage, PAGE_SIZE, total);
 	}
 
+	/**
+	 * Issue #21: fills at the order's own reference_price. See the explicit-price overload for the
+	 * fillable checks, the fund lock and how holdings/cash are applied.
+	 */
 	@Transactional
 	public OrderView fill(long orderId, String actorId) {
-		return recordTerminalEvent(orderId, actorId, "FILLED");
+		return fill(orderId, actorId, null);
+	}
+
+	/**
+	 * Records the FILLED event and applies its effect to the fund (issue #21): a BUY adds the traded
+	 * quantity to the fund's holding in that security and takes quantity x price from fund.cash; a
+	 * SELL does the reverse. explicitPrice is the request body's optional price (validated positive
+	 * below); null means "use the order's own reference_price".
+	 *
+	 * <p>
+	 * Order of operations mirrors submit()'s own reasoning (trap #7): the fund row lock is taken
+	 * BEFORE reading the fund's cash or this security's holding, and held for the rest of this
+	 * transaction, so a fill and a new order for the same fund serialise on the same row lock that
+	 * already serialises two orders against each other -- the new order's pending-exposure read
+	 * (buildContext -> findHoldings/findPendingOrders) cannot run until this fill's cash/holding
+	 * update has committed, and vice versa. Fillability (decided PASS/REVIEW, not already terminal)
+	 * is checked only after the lock is held, per the design: two callers racing to fill the SAME
+	 * order still only ever apply the cash/holding change once, because the second one blocks on the
+	 * fund lock, then finds the order already FILLED and gets a 409 rather than a double-applied fill.
+	 *
+	 * <p>
+	 * Trap #6: the cash/holding checks below run before either UPDATE, so a fill that would overdraw
+	 * cash or oversell a holding is refused with nothing written, rather than letting a NUMERIC CHECK
+	 * constraint fail mid-transaction (which Postgres would treat as 25P02 and abort everything,
+	 * including the order_event insert that already ran).
+	 */
+	@Transactional
+	public OrderView fill(long orderId, String actorId, BigDecimal explicitPrice) {
+		if (explicitPrice != null && explicitPrice.signum() <= 0) {
+			throw OrdersProblems.badRequest(List.of(new OrdersProblems.FieldError("price", "price must be a positive number.")));
+		}
+
+		OrderRepository.OrderRow order = orderRepository.findOrder(orderId)
+			.orElseThrow(() -> OrdersProblems.notFound("no order with id " + orderId));
+
+		OrderRepository.FundRow fund = orderRepository.lockFund(order.fundId())
+			.orElseThrow(() -> new IllegalStateException(
+					"order " + orderId + " references fund " + order.fundId() + " which no longer exists"));
+
+		ensureFillableOrCancellable(orderId);
+
+		BigDecimal price = explicitPrice != null ? explicitPrice : order.referencePrice();
+		BigDecimal value = price.multiply(BigDecimal.valueOf(order.quantity()));
+		long holdingBefore = orderRepository.findHoldingQuantity(fund.id(), order.securityId());
+		BigDecimal cashBefore = fund.cash();
+		long holdingAfter;
+		BigDecimal cashAfter;
+
+		if ("BUY".equals(order.side())) {
+			cashAfter = cashBefore.subtract(value);
+			if (cashAfter.signum() < 0) {
+				throw OrdersProblems.conflict("filling order " + orderId + " (" + order.quantity() + " "
+						+ order.ticker() + " @ " + price.toPlainString() + " = " + value.toPlainString()
+						+ ") would take fund cash from " + cashBefore.toPlainString() + " below zero.");
+			}
+			holdingAfter = holdingBefore + order.quantity();
+			orderRepository.updateFundCash(fund.id(), cashAfter);
+			orderRepository.incrementHolding(fund.id(), order.securityId(), order.quantity());
+		}
+		else {
+			if (holdingBefore < order.quantity()) {
+				throw OrdersProblems.conflict("the fund holds " + holdingBefore + " shares of " + order.ticker()
+						+ "; cannot fill a sell of " + order.quantity() + ".");
+			}
+			holdingAfter = holdingBefore - order.quantity();
+			cashAfter = cashBefore.add(value);
+			orderRepository.updateFundCash(fund.id(), cashAfter);
+			orderRepository.decrementHolding(fund.id(), order.securityId(), order.quantity());
+		}
+
+		Map<String, Object> detail = new LinkedHashMap<>();
+		detail.put("price", price);
+		detail.put("side", order.side());
+		detail.put("ticker", order.ticker());
+		detail.put("quantity", order.quantity());
+		detail.put("cashBefore", cashBefore);
+		detail.put("cashAfter", cashAfter);
+		detail.put("holdingBefore", holdingBefore);
+		detail.put("holdingAfter", holdingAfter);
+		orderRepository.insertOrderEvent(orderId, "FILLED", actorId, clock.instant(), writeJson(detail));
+
+		return buildOrderView(orderId);
 	}
 
 	@Transactional
 	public OrderView cancel(long orderId, String actorId) {
-		return recordTerminalEvent(orderId, actorId, "CANCELLED");
+		orderRepository.findOrder(orderId).orElseThrow(() -> OrdersProblems.notFound("no order with id " + orderId));
+		ensureFillableOrCancellable(orderId);
+		orderRepository.insertOrderEvent(orderId, "CANCELLED", actorId, clock.instant(), "{}");
+		return buildOrderView(orderId);
 	}
 
 	/**
 	 * Fill/cancel only from a PASS/REVIEW-decided, not-already-filled-or-cancelled order (spec 3.6);
-	 * anything else is a 409, never a 500. Once this event is recorded, the order stops counting as
-	 * pending exposure (OrderRepository.findPendingOrders excludes any order with a FILLED or
-	 * CANCELLED event). The holdings side of a fill (crediting the security into the fund's
-	 * holdings, debiting fund.cash) is out of scope for M7a -- fund.cash and holding rows are left
-	 * untouched; only the order's own pending-exposure contribution is removed, which is exactly the
-	 * cash rule's existing "value already fits under cash minus pending buys" semantics.
+	 * anything else is a 409, never a 500. Once FILLED or CANCELLED is recorded, the order stops
+	 * counting as pending exposure (OrderRepository.findPendingOrders excludes any order with a
+	 * FILLED or CANCELLED event) -- for a fill, its effect now lives in fund.cash/holding instead
+	 * (issue #21), so it is never counted twice.
 	 */
-	private OrderView recordTerminalEvent(long orderId, String actorId, String eventType) {
-		orderRepository.findOrder(orderId).orElseThrow(() -> OrdersProblems.notFound("no order with id " + orderId));
-
+	private void ensureFillableOrCancellable(long orderId) {
 		String latestEvent = orderRepository.findLatestEventType(orderId)
 			.orElseThrow(() -> new IllegalStateException("order " + orderId + " has no events at all"));
 
@@ -362,9 +446,6 @@ public class OrderService {
 		if ("BLOCK".equals(outcome)) {
 			throw OrdersProblems.conflict("order " + orderId + " was BLOCKed and cannot be filled or cancelled.");
 		}
-
-		orderRepository.insertOrderEvent(orderId, eventType, actorId, clock.instant(), "{}");
-		return buildOrderView(orderId);
 	}
 
 	private OrderView replay(OrderRepository.OrderRow existing, String hash) {
