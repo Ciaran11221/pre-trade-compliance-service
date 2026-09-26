@@ -50,13 +50,15 @@ public record Scenario(String id, String title, String kind, List<String> covers
 	 * Whichever of these a step cares about; null means "not checked" for that field. limitValue is
 	 * for a "get-limits" step only: the expected active value (as a plain decimal string) of the
 	 * setting named by that step's fields.key, read back from GET /api/limits. quarantineReason,
-	 * assignedTo and unassigned (M7b, issue #14) check an order's quarantine sub-view from a
-	 * "submit-order" or "get-order" step: quarantineReason against OrderView.quarantine().reason(),
-	 * assignedTo against OrderView.quarantine().assignedTo(), and unassigned=true asserts that same
-	 * field is null (an explicit boolean rather than overloading assignedTo with a sentinel string).
+	 * assignedTo, unassigned and assignment (M7b, issue #14; issue #27) check an order's quarantine
+	 * sub-view from a "submit-order" or "get-order" step: quarantineReason against
+	 * OrderView.quarantine().reason(), assignedTo against OrderView.quarantine().assignedTo(),
+	 * unassigned=true asserts that same field is null AND that assignment is UNASSIGNED (an explicit
+	 * boolean rather than overloading assignedTo with a sentinel string), and assignment checks
+	 * OrderView.quarantine().assignment() directly against one of ANY_SUPERVISOR/ASSIGNED/UNASSIGNED.
 	 */
 	public record Expect(Integer httpStatus, String resultStatus, Integer requiredApprovals, Boolean hidesBreach,
-			String limitValue, String quarantineReason, String assignedTo, Boolean unassigned) {
+			String limitValue, String quarantineReason, String assignedTo, Boolean unassigned, String assignment) {
 	}
 
 	public record Fund(String code, BigDecimal totalAssets, BigDecimal cash, boolean diversified) {

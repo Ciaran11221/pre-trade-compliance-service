@@ -30,11 +30,28 @@ public class QuarantineRepository {
 	public record ResolutionRow(long quarantineId, String resolution, String resolvedBy, Instant resolvedAt) {
 	}
 
-	/** One row for GET /api/quarantine: the quarantine plus the order fields a caller needs to see. */
+	/**
+	 * One row for GET /api/quarantine: the quarantine plus the order fields a caller needs to see.
+	 * assignment (issue #27) is the read-path state, mapped the same way OrderRepository.QuarantineRow
+	 * maps it -- see ASSIGNMENT_READ_EXPRESSION below.
+	 */
 	public record OpenQuarantineRow(long orderId, long fundId, String ticker, String side, long quantity,
 			String submittedBy, String reason, Long matchedOrderId, Instant quarantinedAt, Instant expiresAt,
-			String assignedTo) {
+			String assignment, String assignedTo) {
 	}
+
+	/**
+	 * This class's own copy of orders.OrderRepository.ASSIGNMENT_READ_EXPRESSION (issue #27) -- the
+	 * two repositories run their own SQL against the shared quarantine table (see this class's
+	 * Javadoc), so there is no shared Java constant to reuse. Unqualified for lockQuarantineByOrderId
+	 * below (no join, no alias); ASSIGNMENT_READ_EXPRESSION_Q is the same expression qualified with
+	 * "q." for findOpenQuarantines' joined query.
+	 */
+	private static final String ASSIGNMENT_READ_EXPRESSION = "COALESCE(assignment, "
+			+ "CASE WHEN assigned_to IS NOT NULL THEN 'ASSIGNED' ELSE 'NOT_RECORDED' END)";
+
+	private static final String ASSIGNMENT_READ_EXPRESSION_Q = "COALESCE(q.assignment, "
+			+ "CASE WHEN q.assigned_to IS NOT NULL THEN 'ASSIGNED' ELSE 'NOT_RECORDED' END)";
 
 	private final JdbcTemplate jdbcTemplate;
 
@@ -52,9 +69,10 @@ public class QuarantineRepository {
 	public Optional<OrderRepository.QuarantineRow> lockQuarantineByOrderId(long orderId) {
 		try {
 			return Optional.of(jdbcTemplate.queryForObject("""
-					SELECT id, order_id, reason, matched_order_id, quarantined_at, expires_at, assigned_to
+					SELECT id, order_id, reason, matched_order_id, quarantined_at, expires_at, assigned_to,
+					       %s AS assignment
 					FROM quarantine WHERE order_id = ? FOR UPDATE
-					""", this::mapQuarantine, orderId));
+					""".formatted(ASSIGNMENT_READ_EXPRESSION), this::mapQuarantine, orderId));
 		}
 		catch (EmptyResultDataAccessException ex) {
 			return Optional.empty();
@@ -65,7 +83,7 @@ public class QuarantineRepository {
 		long matched = rs.getLong("matched_order_id");
 		return new OrderRepository.QuarantineRow(rs.getLong("id"), rs.getLong("order_id"), rs.getString("reason"),
 				rs.wasNull() ? null : matched, rs.getTimestamp("quarantined_at").toInstant(),
-				rs.getTimestamp("expires_at").toInstant(), rs.getString("assigned_to"));
+				rs.getTimestamp("expires_at").toInstant(), rs.getString("assignment"), rs.getString("assigned_to"));
 	}
 
 	public Optional<ResolutionRow> findResolution(long quarantineId) {
@@ -110,13 +128,14 @@ public class QuarantineRepository {
 	public List<OpenQuarantineRow> findOpenQuarantines(Instant now, String assignedTo) {
 		String sql = """
 				SELECT o.id AS order_id, o.fund_id, s.ticker, o.side, o.quantity, o.submitted_by,
-				       q.reason, q.matched_order_id, q.quarantined_at, q.expires_at, q.assigned_to
+				       q.reason, q.matched_order_id, q.quarantined_at, q.expires_at, q.assigned_to,
+				       %s AS assignment
 				FROM quarantine q
 				JOIN trade_order o ON o.id = q.order_id
 				JOIN security s ON s.id = o.security_id
 				WHERE q.expires_at > ?
 				  AND NOT EXISTS (SELECT 1 FROM quarantine_resolution qr WHERE qr.quarantine_id = q.id)
-				""" + (assignedTo != null ? " AND q.assigned_to = ?" : "") + """
+				""".formatted(ASSIGNMENT_READ_EXPRESSION_Q) + (assignedTo != null ? " AND q.assigned_to = ?" : "") + """
 
 				ORDER BY q.quarantined_at ASC, q.id ASC
 				""";
@@ -130,7 +149,7 @@ public class QuarantineRepository {
 		return new OpenQuarantineRow(rs.getLong("order_id"), rs.getLong("fund_id"), rs.getString("ticker"),
 				rs.getString("side"), rs.getLong("quantity"), rs.getString("submitted_by"), rs.getString("reason"),
 				rs.wasNull() ? null : matched, rs.getTimestamp("quarantined_at").toInstant(),
-				rs.getTimestamp("expires_at").toInstant(), rs.getString("assigned_to"));
+				rs.getTimestamp("expires_at").toInstant(), rs.getString("assignment"), rs.getString("assigned_to"));
 	}
 
 	/** Every quarantine past its expiry with no resolution yet -- QuarantineExpiryJob's candidates. */

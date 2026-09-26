@@ -57,7 +57,7 @@ public class QuarantineService {
 	private QuarantineListItemView toListItemView(QuarantineRepository.OpenQuarantineRow row) {
 		return new QuarantineListItemView(row.orderId(), row.fundId(), row.ticker(), row.side(), row.quantity(),
 				row.submittedBy(), row.reason(), row.matchedOrderId(), row.quarantinedAt(), row.expiresAt(),
-				row.assignedTo());
+				row.assignment(), row.assignedTo());
 	}
 
 	/**

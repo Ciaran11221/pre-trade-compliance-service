@@ -252,11 +252,23 @@ public class OrderService {
 	}
 
 	/**
-	 * Writes the quarantine row, its QUARANTINED event, and its escalation assignment (spec 3.3):
-	 * eligible releasers are SUPERVISORs who are not the sender, not the sender's own backup (the
-	 * backup is deliberately held out of this general pool and checked next -- see the class
-	 * Javadoc-style note below), and not out of office. If that pool is empty, the sender's backup
-	 * is assigned if in office; failing that, any in-office COMPLIANCE user; failing that, the
+	 * The escalation state resolveAssignee decided (issue #27): ANY_SUPERVISOR (an eligible releaser
+	 * is in office, assignedTo null -- the hold is open to any supervisor), ASSIGNED (escalated to a
+	 * named backup or COMPLIANCE user, assignedTo names them) or UNASSIGNED (nobody eligible, left to
+	 * expire, assignedTo null). Recorded once in the quarantine row alongside assignedTo, never
+	 * recomputed on a later read -- see quarantine.assignment/quarantine_assignment_matches_assignee
+	 * in V6__quarantine_assignment.sql, which is what makes ANY_SUPERVISOR and UNASSIGNED (both
+	 * assignedTo null) distinguishable, the exact ambiguity issue #27 reports.
+	 */
+	private record Assignment(String state, String assignedTo) {
+	}
+
+	/**
+	 * Writes the quarantine row, its QUARANTINED event, and its escalation assignment (spec 3.3,
+	 * issue #27): eligible releasers are SUPERVISORs who are not the sender, not the sender's own
+	 * backup (the backup is deliberately held out of this general pool and checked next -- see the
+	 * class Javadoc-style note below), and not out of office. If that pool is empty, the sender's
+	 * backup is assigned if in office; failing that, any in-office COMPLIANCE user; failing that, the
 	 * quarantine is recorded unassigned. Nothing is sent (spec 3.3): this only ever writes a row.
 	 *
 	 * <p>
@@ -269,17 +281,17 @@ public class OrderService {
 	 */
 	private void recordQuarantine(long orderId, String submitterId, Instant now, Limits limits,
 			QuarantineDecision decision) {
-		String assignedTo = resolveAssignee(submitterId, now);
+		Assignment assignment = resolveAssignee(submitterId, now);
 
 		long expiryMinutes = limits.get(LimitKey.QUARANTINE_EXPIRY_MINUTES).longValueExact();
 		Instant expiresAt = now.plus(expiryMinutes, ChronoUnit.MINUTES);
 
 		orderRepository.insertOrderEvent(orderId, "QUARANTINED", submitterId, now, "{}");
 		orderRepository.insertQuarantine(orderId, decision.reason(), decision.matchedOrderId(), now, expiresAt,
-				assignedTo);
+				assignment.state(), assignment.assignedTo());
 	}
 
-	private String resolveAssignee(String submitterId, Instant now) {
+	private Assignment resolveAssignee(String submitterId, Instant now) {
 		Optional<Staff> sender = staffRepository.findById(submitterId);
 		String backupId = sender.map(Staff::getBackupStaff).map(Staff::getId).orElse(null);
 
@@ -289,22 +301,26 @@ public class OrderService {
 			.filter(s -> backupId == null || !s.getId().equals(backupId))
 			.anyMatch(s -> !isOutOfOffice(s, now));
 		if (eligibleReleaserInOffice) {
-			return null;
+			return new Assignment("ANY_SUPERVISOR", null);
 		}
 
 		if (backupId != null) {
 			Staff backup = staffRepository.findById(backupId).orElse(null);
 			if (backup != null && !isOutOfOffice(backup, now)) {
-				return backupId;
+				return new Assignment("ASSIGNED", backupId);
 			}
 		}
 
-		return staffRepository.findByRoleOrderById("COMPLIANCE")
+		Optional<String> complianceId = staffRepository.findByRoleOrderById("COMPLIANCE")
 			.stream()
 			.filter(s -> !isOutOfOffice(s, now))
 			.map(Staff::getId)
-			.findFirst()
-			.orElse(null);
+			.findFirst();
+		if (complianceId.isPresent()) {
+			return new Assignment("ASSIGNED", complianceId.get());
+		}
+
+		return new Assignment("UNASSIGNED", null);
 	}
 
 	@Transactional(readOnly = true)
@@ -469,8 +485,8 @@ public class OrderService {
 	}
 
 	private QuarantineSummaryView toQuarantineView(OrderRepository.QuarantineRow row) {
-		return new QuarantineSummaryView(row.reason(), row.matchedOrderId(), row.assignedTo(), row.quarantinedAt(),
-				row.expiresAt());
+		return new QuarantineSummaryView(row.reason(), row.matchedOrderId(), row.assignment(), row.assignedTo(),
+				row.quarantinedAt(), row.expiresAt());
 	}
 
 	/**
