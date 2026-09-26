@@ -150,6 +150,43 @@ class OrderIntakeIdempotencyTest {
 		assertThat(rowCount).as("exactly one order row for the raced clientOrderId").isEqualTo(1);
 	}
 
+	/**
+	 * The one race the fund lock cannot serialise: the same new clientOrderId sent for two DIFFERENT
+	 * funds takes two different fund locks, so both calls reach the insert and meet on the unique
+	 * key. Different funds make the bodies different, so the loser must get a clean 409, never a 500.
+	 * Repeated because a single pair can miss the collision window.
+	 */
+	@Test
+	void sameNewClientOrderIdRacedAcrossTwoFundsGivesOneRowAndA409NotA500() throws Exception {
+		long cbfFundId = jdbcTemplate.queryForObject("SELECT id FROM fund WHERE code = 'CBF'", Long.class);
+		for (int attempt = 0; attempt < 10; attempt++) {
+			String clientOrderId = "idem-cross-fund-" + attempt;
+			CyclicBarrier barrier = new CyclicBarrier(2);
+			ExecutorService pool = Executors.newFixedThreadPool(2);
+			try {
+				Future<ResponseEntity<String>> first = pool
+					.submit(postWithBarrier(orderBody(clientOrderId, hgfFundId, "BUY", "KSTL", 50_000L), barrier));
+				Future<ResponseEntity<String>> second = pool
+					.submit(postWithBarrier(orderBody(clientOrderId, cbfFundId, "BUY", "KSTL", 50_000L), barrier));
+
+				List<HttpStatus> statuses = List.of(first.get(30, TimeUnit.SECONDS), second.get(30, TimeUnit.SECONDS))
+					.stream()
+					.map(r -> HttpStatus.valueOf(r.getStatusCode().value()))
+					.sorted()
+					.toList();
+				assertThat(statuses).as("attempt %d: one order accepted, the other refused as a conflict", attempt)
+					.containsExactly(HttpStatus.CREATED, HttpStatus.CONFLICT);
+			}
+			finally {
+				pool.shutdown();
+			}
+
+			Integer rowCount = jdbcTemplate.queryForObject(
+					"SELECT COUNT(*) FROM trade_order WHERE client_order_id = ?", Integer.class, clientOrderId);
+			assertThat(rowCount).as("attempt %d: exactly one order row", attempt).isEqualTo(1);
+		}
+	}
+
 	private Callable<ResponseEntity<String>> postWithBarrier(Map<String, Object> body, CyclicBarrier barrier) {
 		return () -> {
 			barrier.await(30, TimeUnit.SECONDS);

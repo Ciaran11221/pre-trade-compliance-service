@@ -17,7 +17,6 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 
-import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -78,7 +77,7 @@ public class OrderService {
 	 * the winner just wrote, replaying that response rather than ever reaching the insert.
 	 *
 	 * <p>
-	 * The insert below is still wrapped in a DuplicateKeyException fallback, for the one case the
+	 * The insert below still has a conflict fallback (ON CONFLICT DO NOTHING, then replay), for the one case the
 	 * fund lock alone cannot cover: two requests that share a clientOrderId but target DIFFERENT
 	 * fundIds. Those take two different row locks and can still race each other on the unique
 	 * constraint, so that path also needs to resolve to a clean replay-or-409 rather than a 500.
@@ -126,17 +125,17 @@ public class OrderService {
 		OrderContext context = buildContext(fund, side, ticker, quantity, security.price());
 		ComplianceEngine.EngineResult result = complianceEngine.evaluate(context);
 
-		long orderId;
-		try {
-			orderId = orderRepository.insertOrder(clientOrderId, fundId, security.id(), side, quantity,
-					security.price(), submitterId, now, hash);
-		}
-		catch (DuplicateKeyException ex) {
+		Optional<Long> inserted = orderRepository.insertOrder(clientOrderId, fundId, security.id(), side, quantity,
+				security.price(), submitterId, now, hash);
+		if (inserted.isEmpty()) {
 			// See the Javadoc above: only reachable when two requests share a clientOrderId but
 			// target different funds. Fall back to the same replay-or-409 path.
-			OrderRepository.OrderRow raced = orderRepository.findOrderByClientOrderId(clientOrderId).orElseThrow(() -> ex);
+			OrderRepository.OrderRow raced = orderRepository.findOrderByClientOrderId(clientOrderId)
+				.orElseThrow(() -> new IllegalStateException("clientOrderId " + clientOrderId
+						+ " conflicted on insert but no stored order was found"));
 			return replay(raced, hash);
 		}
+		long orderId = inserted.get();
 
 		orderRepository.insertOrderEvent(orderId, "DECIDED", submitterId, now, "{}");
 

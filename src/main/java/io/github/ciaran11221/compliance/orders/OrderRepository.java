@@ -225,15 +225,25 @@ public class OrderRepository {
 				rs.getTimestamp("submitted_at").toInstant(), rs.getString("request_hash"));
 	}
 
-	/** May throw org.springframework.dao.DuplicateKeyException on a client_order_id collision. */
-	public long insertOrder(String clientOrderId, long fundId, long securityId, OrderContext.Side side, long quantity,
-			BigDecimal referencePrice, String submittedBy, Instant submittedAt, String requestHash) {
-		return jdbcTemplate.queryForObject("""
+	/**
+	 * Empty when another transaction already holds this clientOrderId. ON CONFLICT DO NOTHING rather
+	 * than letting the unique key throw: in Postgres a failed statement aborts the whole
+	 * transaction, so after a duplicate-key error the caller could not even look up the winning
+	 * order to replay it. The insert waits for the other transaction to commit, so a follow-up read
+	 * sees the winner's row.
+	 */
+	public Optional<Long> insertOrder(String clientOrderId, long fundId, long securityId, OrderContext.Side side,
+			long quantity, BigDecimal referencePrice, String submittedBy, Instant submittedAt, String requestHash) {
+		return jdbcTemplate.query("""
 				INSERT INTO trade_order (client_order_id, fund_id, security_id, side, quantity, reference_price,
 				    submitted_by, submitted_at, request_hash)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id
-				""", Long.class, clientOrderId, fundId, securityId, side.name(), quantity, referencePrice,
-				submittedBy, Timestamp.from(submittedAt), requestHash);
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+				ON CONFLICT (client_order_id) DO NOTHING
+				RETURNING id
+				""", (rs, rowNum) -> rs.getLong("id"), clientOrderId, fundId, securityId, side.name(), quantity,
+				referencePrice, submittedBy, Timestamp.from(submittedAt), requestHash)
+			.stream()
+			.findFirst();
 	}
 
 	public void insertOrderEvent(long orderId, String eventType, String actor, Instant occurredAt, String detailJson) {
