@@ -168,7 +168,7 @@ class LimitChangeValidationErrorsHttpTest {
 		return restClient.post()
 			.uri("http://localhost:" + port + "/api/limit-changes")
 			.contentType(MediaType.APPLICATION_JSON)
-			.headers(h -> h.setBearerAuth(supervisorToken("bob")))
+			.headers(h -> h.setBearerAuth(supervisorToken("sup-1")))
 			.body(objectMapper.writeValueAsString(body))
 			.exchange((req, res) -> ResponseEntity.status(res.getStatusCode())
 				.headers(res.getHeaders())

@@ -89,7 +89,7 @@ class StaffValidationErrorsHttpTest {
 		List<String> errorFields = errors.findValues("field").stream()
 			.map(JsonNode::asText)
 			.toList();
-		assertThat(errorFields).contains("from", "until");
+		assertThat(errorFields).containsExactly("until");
 	}
 
 	@Test

@@ -22,6 +22,7 @@ import io.github.ciaran11221.compliance.reference.StaffRepository;
 import io.github.ciaran11221.compliance.rules.LimitKey;
 import io.github.ciaran11221.compliance.rules.Limits;
 import io.github.ciaran11221.compliance.rules.LimitsRepository;
+import io.github.ciaran11221.compliance.web.ApiProblems;
 
 /**
  * Rules 1-11 of the limit-change process: hard bounds, the impact preview, how many approvals a
@@ -70,9 +71,9 @@ public class LimitChangeService {
 	// Spring not to roll back on either of them is a no-op, not a risk.
 	@Transactional(noRollbackFor = ErrorResponseException.class)
 	public LimitChangeView requestChange(String requesterId, LimitChangeRequestBody body) {
-		List<LimitChangeProblems.FieldError> errors = validate(body);
+		List<ApiProblems.FieldError> errors = validate(body);
 		if (!errors.isEmpty()) {
-			throw LimitChangeProblems.badRequest(errors);
+			throw ApiProblems.badRequest(errors);
 		}
 
 		LimitKey key = parseKey(body.key());
@@ -324,20 +325,20 @@ public class LimitChangeService {
 				+ waiting.requestId() + ", activates at " + waiting.activatesAt() + "); cancel it first.");
 	}
 
-	private List<LimitChangeProblems.FieldError> validate(LimitChangeRequestBody body) {
-		List<LimitChangeProblems.FieldError> errors = new ArrayList<>();
+	private List<ApiProblems.FieldError> validate(LimitChangeRequestBody body) {
+		List<ApiProblems.FieldError> errors = new ArrayList<>();
 		if (body == null) {
-			errors.add(new LimitChangeProblems.FieldError("body", "a key, newValue and reason are required."));
+			errors.add(new ApiProblems.FieldError("body", "a key, newValue and reason are required."));
 			return errors;
 		}
 		if (isBlank(body.key())) {
-			errors.add(new LimitChangeProblems.FieldError("key", "key is required."));
+			errors.add(new ApiProblems.FieldError("key", "key is required."));
 		}
 		if (body.newValue() == null) {
-			errors.add(new LimitChangeProblems.FieldError("newValue", "newValue is required."));
+			errors.add(new ApiProblems.FieldError("newValue", "newValue is required."));
 		}
 		if (isBlank(body.reason())) {
-			errors.add(new LimitChangeProblems.FieldError("reason", "reason is required."));
+			errors.add(new ApiProblems.FieldError("reason", "reason is required."));
 		}
 		return errors;
 	}

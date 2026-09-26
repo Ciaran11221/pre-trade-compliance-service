@@ -21,9 +21,6 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.web.client.MockRestServiceServer;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.client.RestClient;
 
 import tools.jackson.databind.JsonNode;
@@ -113,17 +110,39 @@ class OrderValidationErrorsHttpTest {
 				.headers(res.getHeaders())
 				.body(res.bodyTo(String.class)));
 
-		// Empty body should get handled by request body binding, resulting in a 400
-		// This is tested by the service validation, not the exception handler
 		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-		JsonNode jsonResponse = objectMapper.readTree(response.getBody());
-		if (jsonResponse.has("errors")) {
-			JsonNode errors = jsonResponse.get("errors");
-			List<String> errorFields = errors.findValues("field").stream()
-				.map(JsonNode::asText)
-				.toList();
-			assertThat(errorFields).contains("body");
-		}
+		assertThat(errorFields(response)).containsExactly("body");
+	}
+
+	@Test
+	void malformedJsonReportsFieldBody() throws Exception {
+		ResponseEntity<String> response = postRaw("{\"clientOrderId\": \"x\", ", traderToken("anne"));
+
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+		assertThat(errorFields(response)).containsExactly("body");
+	}
+
+	@Test
+	void wrongTypeNamesTheField() throws Exception {
+		String json = "{\"clientOrderId\": \"t1\", \"fundId\": " + hgfFundId
+				+ ", \"side\": \"BUY\", \"ticker\": \"KSTL\", \"quantity\": \"abc\"}";
+		ResponseEntity<String> response = postRaw(json, traderToken("anne"));
+
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+		assertThat(errorFields(response)).containsExactly("quantity");
+	}
+
+	/**
+	 * Known limit, pinned so a change to it is seen: Spring reads the body before @PreAuthorize, so
+	 * unreadable JSON from the wrong role is a 400, not a 403. Well-formed bad values still get 403
+	 * (wrongRoleWithBadBodyReturns403NotA400).
+	 */
+	@Test
+	void wrongRoleWithUnreadableJsonIsA400() throws Exception {
+		ResponseEntity<String> response = postRaw("{not json", supervisorToken("sup-1"));
+
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+		assertThat(errorFields(response)).containsExactly("body");
 	}
 
 	@Test
@@ -158,7 +177,7 @@ class OrderValidationErrorsHttpTest {
 		ResponseEntity<String> response = restClient.post()
 			.uri("http://localhost:" + port + "/api/orders")
 			.contentType(MediaType.APPLICATION_JSON)
-			.headers(h -> h.setBearerAuth(supervisorToken("bob")))
+			.headers(h -> h.setBearerAuth(supervisorToken("sup-1")))
 			.body(objectMapper.writeValueAsString(body))
 			.exchange((req, res) -> ResponseEntity.status(res.getStatusCode())
 				.headers(res.getHeaders())
@@ -191,6 +210,23 @@ class OrderValidationErrorsHttpTest {
 			.exchange((req, res) -> ResponseEntity.status(res.getStatusCode())
 				.headers(res.getHeaders())
 				.body(res.bodyTo(String.class)));
+	}
+
+	private ResponseEntity<String> postRaw(String json, String token) {
+		return restClient.post()
+			.uri("http://localhost:" + port + "/api/orders")
+			.contentType(MediaType.APPLICATION_JSON)
+			.headers(h -> h.setBearerAuth(token))
+			.body(json)
+			.exchange((req, res) -> ResponseEntity.status(res.getStatusCode())
+				.headers(res.getHeaders())
+				.body(res.bodyTo(String.class)));
+	}
+
+	private List<String> errorFields(ResponseEntity<String> response) throws Exception {
+		JsonNode errors = objectMapper.readTree(response.getBody()).get("errors");
+		assertThat(errors).as("errors[] in %s", response.getBody()).isNotNull();
+		return errors.findValues("field").stream().map(JsonNode::asText).toList();
 	}
 
 	private String traderToken(String staffId) {
