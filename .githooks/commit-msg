@@ -1,0 +1,5 @@
+#!/bin/sh
+# Check commit message for banned words and emoji/em-dash
+
+cat "$1" | sh .githooks/check-writing.sh
+exit $?

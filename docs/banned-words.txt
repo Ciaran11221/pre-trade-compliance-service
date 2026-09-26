@@ -1,0 +1,27 @@
+# Banned words list for writing check
+# Entries are checked case-insensitively and match at word start (e.g. "robustness" matches "robust")
+# Multi-word entries match with any whitespace between words; ' and ' are treated the same
+# Emoji (U+1F300–U+1FAFF, U+2600–U+27BF, U+1F000–U+1F2FF) and em dash (U+2014) checked by code only
+seamless
+robust
+leverage
+comprehensive
+delve
+powerful
+elegant
+streamline
+utilize
+utilise
+cutting-edge
+state-of-the-art
+blazing
+effortless
+game-changer
+best-in-class
+world-class
+enterprise-grade
+battle-tested
+rock-solid
+it's worth noting
+in summary
+in conclusion
