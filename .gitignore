@@ -7,3 +7,5 @@ target/
 .vscode/
 .DS_Store
 .env
+# jqwik's own local seed-replay cache (M9, issue #30), not shared across machines
+.jqwik-database
