@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -21,6 +22,7 @@ import io.github.ciaran11221.compliance.reference.StaffRepository;
 import io.github.ciaran11221.compliance.rules.LimitKey;
 import io.github.ciaran11221.compliance.rules.Limits;
 import io.github.ciaran11221.compliance.rules.LimitsRepository;
+import io.github.ciaran11221.compliance.web.ApiProblems;
 
 /**
  * Rules 1-11 of the limit-change process: hard bounds, the impact preview, how many approvals a
@@ -69,6 +71,11 @@ public class LimitChangeService {
 	// Spring not to roll back on either of them is a no-op, not a risk.
 	@Transactional(noRollbackFor = ErrorResponseException.class)
 	public LimitChangeView requestChange(String requesterId, LimitChangeRequestBody body) {
+		List<ApiProblems.FieldError> errors = validate(body);
+		if (!errors.isEmpty()) {
+			throw ApiProblems.badRequest(errors);
+		}
+
 		LimitKey key = parseKey(body.key());
 		Instant now = clock.instant();
 
@@ -316,6 +323,28 @@ public class LimitChangeService {
 			LimitChangeRepository.WaitingChangeRow waiting) {
 		return LimitChangeProblems.conflict(settingKey + " already has a change waiting to activate (request "
 				+ waiting.requestId() + ", activates at " + waiting.activatesAt() + "); cancel it first.");
+	}
+
+	private List<ApiProblems.FieldError> validate(LimitChangeRequestBody body) {
+		List<ApiProblems.FieldError> errors = new ArrayList<>();
+		if (body == null) {
+			errors.add(new ApiProblems.FieldError("body", "a key, newValue and reason are required."));
+			return errors;
+		}
+		if (isBlank(body.key())) {
+			errors.add(new ApiProblems.FieldError("key", "key is required."));
+		}
+		if (body.newValue() == null) {
+			errors.add(new ApiProblems.FieldError("newValue", "newValue is required."));
+		}
+		if (isBlank(body.reason())) {
+			errors.add(new ApiProblems.FieldError("reason", "reason is required."));
+		}
+		return errors;
+	}
+
+	private boolean isBlank(String value) {
+		return value == null || value.isBlank();
 	}
 
 	private LimitKey parseKey(String key) {

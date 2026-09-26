@@ -18,6 +18,7 @@ Checks a fund's buy and sell orders before they reach a broker: the restricted l
 | `limits` | Limit changes: request, impact preview, approvals scaled by money freed, cooling-off, cancel. Requests, approvals, activations and refusals are insert-only |
 | `orders` | Order intake: idempotent create with a per-fund lock, the stored decision (rule results, settings and fund-state snapshot), read, fill and cancel. Orders, events, decisions and rule results are insert-only |
 | `quarantine` | Quarantine for possible duplicates, opposite-side orders and out-of-office senders: release (re-runs the compliance rules), reject, the open queue, escalation, and the scheduled expiry job (every read also treats an overdue quarantine as expired on its own). Quarantines and their resolutions are insert-only |
+| `web` | The one 400 shape for every route (`errors[] {field, message}`), and the handler that gives unreadable JSON the same shape |
 
 | Path | Holds |
 |---|---|
