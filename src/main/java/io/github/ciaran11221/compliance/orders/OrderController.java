@@ -55,8 +55,13 @@ public class OrderController {
 
 	@PostMapping("/api/orders/{id}/fill")
 	@PreAuthorize(TRADER_ROLE)
-	public OrderView fill(@AuthenticationPrincipal Jwt jwt, @PathVariable String id) {
-		return orderService.fill(parseId(id), jwt.getSubject());
+	public OrderView fill(@AuthenticationPrincipal Jwt jwt, @PathVariable String id,
+			// required = false for the same reason submit()'s body is: a missing body must still
+			// reach @PreAuthorize before failing, so a disallowed role gets 403 rather than racing
+			// body handling (RouteAccessMatrixTest calls this route with no body at all). No body, or
+			// a body with no price, fills at the order's own reference price.
+			@RequestBody(required = false) FillRequestBody body) {
+		return orderService.fill(parseId(id), jwt.getSubject(), body != null ? body.price() : null);
 	}
 
 	@PostMapping("/api/orders/{id}/cancel")

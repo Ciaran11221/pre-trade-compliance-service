@@ -170,6 +170,57 @@ public class OrderRepository {
 		return holdings;
 	}
 
+	/**
+	 * The fund's current holding quantity in one security, or 0 when the fund holds none (either no
+	 * row at all, or a row previously zeroed out by a sell -- see applyHoldingDelta). Called only
+	 * after OrderService.fill has already taken the fund row lock (trap #7), so this always reads the
+	 * quantity as of that lock, never a value some other transaction is mid-write on.
+	 */
+	public long findHoldingQuantity(long fundId, long securityId) {
+		return jdbcTemplate.query("SELECT quantity FROM holding WHERE fund_id = ? AND security_id = ?",
+				(rs, rowNum) -> rs.getLong("quantity"), fundId, securityId).stream().findFirst().orElse(0L);
+	}
+
+	/**
+	 * fund.cash is a plain mutable reference column (never audited), so this is a plain UPDATE -- same
+	 * reasoning as the rest of the reference package. Only ever called after OrderService.fill's fund
+	 * lock is held and the new value has already been checked to be >= 0 (trap #6: check first, then
+	 * write, so a CHECK-constraint failure can never abort the transaction here).
+	 */
+	public void updateFundCash(long fundId, BigDecimal newCash) {
+		jdbcTemplate.update("UPDATE fund SET cash = ? WHERE id = ?", newCash, fundId);
+	}
+
+	/**
+	 * Adds quantity to the fund's holding in this security for a BUY fill, inserting a new row at
+	 * exactly quantity if the fund did not hold it before. Postgres validates a CHECK constraint
+	 * against the row an INSERT ... ON CONFLICT would speculatively write even when the conflict
+	 * branch ends up running instead, so this is only ever safe with a positive value -- see
+	 * decrementHolding for why a SELL fill is a plain UPDATE instead of this same statement with a
+	 * negative quantity.
+	 */
+	public void incrementHolding(long fundId, long securityId, long quantity) {
+		jdbcTemplate.update("""
+				INSERT INTO holding (fund_id, security_id, quantity) VALUES (?, ?, ?)
+				ON CONFLICT (fund_id, security_id) DO UPDATE SET quantity = holding.quantity + ?
+				""", fundId, securityId, quantity, quantity);
+	}
+
+	/**
+	 * Subtracts quantity from the fund's holding in this security for a SELL fill. A plain UPDATE,
+	 * never the INSERT ... ON CONFLICT DO UPDATE incrementHolding uses: OrderService.fill has already
+	 * checked (trap #6, check first then write) that this row exists and holds at least quantity, so
+	 * there is never an insert branch to fall back to, and writing the decrement as an INSERT would
+	 * needlessly risk Postgres validating a speculative negative-quantity candidate row against
+	 * holding_quantity_check before it ever reaches the conflict/update branch. A sell that empties a
+	 * position leaves the row at quantity 0 rather than deleting it (OrderService.fill's design
+	 * choice): findHoldingQuantity and findHoldings both read a 0 row exactly like no row at all.
+	 */
+	public void decrementHolding(long fundId, long securityId, long quantity) {
+		jdbcTemplate.update("UPDATE holding SET quantity = quantity - ? WHERE fund_id = ? AND security_id = ?",
+				quantity, fundId, securityId);
+	}
+
 	public Set<String> findRestrictedTickers() {
 		List<String> tickers = jdbcTemplate.query("""
 				SELECT s.ticker FROM restricted_security rs JOIN security s ON s.id = rs.security_id
