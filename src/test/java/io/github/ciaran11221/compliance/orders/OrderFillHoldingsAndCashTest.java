@@ -333,6 +333,42 @@ class OrderFillHoldingsAndCashTest {
 			.isEqualByComparingTo(new BigDecimal("40000000.0000"));
 	}
 
+	/**
+	 * The test that fails when fill stops taking the fund lock. Fill reads cash and writes back
+	 * cash minus the order's value; without the lock, two fills of two different orders on one fund
+	 * both read the same starting cash and the second write overwrites the first (a lost update).
+	 * Fund cash $200,000,000; orders A and B are $60,000,000 buys, both PASS. Filling them at the
+	 * same moment must leave exactly $80,000,000. Without the lock this left $140,000,000 on 3 of 3
+	 * runs during review. Repeated on fresh funds because one pair can miss the window.
+	 */
+	@Test
+	void twoFillsForOneFundAtTheSameMomentBothComeOffCash() throws Exception {
+		for (int attempt = 0; attempt < 5; attempt++) {
+			long fundId = insertFixtureFund("TWOFILL" + attempt, new BigDecimal("200000000.0000"));
+			insertFixtureSecurity("TWOFA" + attempt);
+			insertFixtureSecurity("TWOFB" + attempt);
+			OrderView orderA = readView(post(orderBody("twofill-a-" + attempt, fundId, "BUY", "TWOFA" + attempt, 600_000L)));
+			OrderView orderB = readView(post(orderBody("twofill-b-" + attempt, fundId, "BUY", "TWOFB" + attempt, 600_000L)));
+			assertThat(orderA.decision().outcome()).isEqualTo("PASS");
+			assertThat(orderB.decision().outcome()).isEqualTo("PASS");
+
+			CyclicBarrier barrier = new CyclicBarrier(2);
+			ExecutorService pool = Executors.newFixedThreadPool(2);
+			try {
+				Future<ResponseEntity<String>> fillA = pool.submit(fillWithBarrier(orderA.id(), barrier));
+				Future<ResponseEntity<String>> fillB = pool.submit(fillWithBarrier(orderB.id(), barrier));
+				assertThat(fillA.get(30, TimeUnit.SECONDS).getStatusCode()).isEqualTo(HttpStatus.OK);
+				assertThat(fillB.get(30, TimeUnit.SECONDS).getStatusCode()).isEqualTo(HttpStatus.OK);
+			}
+			finally {
+				pool.shutdown();
+			}
+
+			assertThat(fundCash(fundId)).as("attempt %d: both $60,000,000 fills must come off $200,000,000", attempt)
+				.isEqualByComparingTo(new BigDecimal("80000000.0000"));
+		}
+	}
+
 	private RuleResultView diversificationResult(OrderView order) {
 		return ruleResult(order, "diversification");
 	}
