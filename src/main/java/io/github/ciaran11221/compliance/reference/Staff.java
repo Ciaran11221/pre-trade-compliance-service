@@ -25,8 +25,8 @@ public class Staff {
 
 	// M7b (issue #14): the fact of a role, on the person, not on any one token -- see
 	// V5__staff_role.sql's javadoc-style comment for why escalation needs this and token roles
-	// cannot supply it. One of TRADER, SUPERVISOR, COMPLIANCE, EXECUTIVE (V5's CHECK constraint).
-	@Column(nullable = false)
+	// cannot supply it. One of TRADER, SUPERVISOR, COMPLIANCE, EXECUTIVE, or null when not recorded
+	// (never chosen by escalation).
 	private String role;
 
 	@ManyToOne(fetch = FetchType.LAZY)
