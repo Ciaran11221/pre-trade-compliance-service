@@ -38,6 +38,7 @@ Checks a fund's buy and sell orders before they reach a broker: the restricted l
 | Run locally | `./mvnw spring-boot:run -Dspring-boot.run.profiles=local` |
 | Issue a local token | `./mvnw -q test-compile exec:java -Dexec.mainClass=io.github.ciaran11221.compliance.support.TokenTool -Dexec.classpathScope=test -Dexec.args="anne TRADER"` |
 | Regenerate the scenario index | `./mvnw test -Dtest=ScenarioIndexTest -Dscenarios.regenerate=true` |
+| Enable the writing check on commits | `git config core.hooksPath .githooks` |
 
 ## Rules
 
