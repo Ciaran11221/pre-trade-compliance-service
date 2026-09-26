@@ -208,28 +208,59 @@ class OrderFillHoldingsAndCashTest {
 	}
 
 	/**
-	 * Issue #21's oversell done-when item: a SELL fill that would take a holding below zero is
-	 * refused with 409 and nothing changes -- neither cash nor the holding. HGF holds 450,000 KSTL;
-	 * this sells 500,000. The compliance engine itself does not check holding sufficiency (only
-	 * order-size/cash/restricted-list/diversification), so this decides REVIEW (order-size, since
-	 * 500,000 shares is a large fraction of KSTL's average daily volume) rather than BLOCK, which is
-	 * exactly the PASS/REVIEW-but-still-unfillable case this check exists for.
+	 * Issue #21's oversell done-when item, updated by issue #23's HoldingRule: HGF holds 450,000
+	 * KSTL; a SELL of 500,000 now BLOCKs at decision time (HoldingRule), rather than reaching PASS or
+	 * REVIEW and being caught only by the fill step's own guard as it was before that rule existed.
+	 * A BLOCKed order can never be filled (ensureFillableOrCancellable), so the fill attempt below
+	 * still ends in 409 with cash and the holding untouched -- just for the "already BLOCKed" reason
+	 * rather than the fill's own holding-sufficiency check, which fillStillRefusesAnOversellWhenThe
+	 * HoldingDropsAfterTheDecision below exercises directly.
 	 */
 	@Test
-	void sellBeyondTheHoldingIsConflictAndNothingChanges() throws Exception {
+	void sellBeyondTheHoldingBlocksAtDecisionTimeAndCannotBeFilled() throws Exception {
 		OrderView order = readView(submit("fill-oversell-1", hgfFundId, "SELL", "KSTL", 500_000L));
-		assertThat(order.decision().outcome()).as("the engine itself does not check holding sufficiency")
-			.isIn("PASS", "REVIEW");
+		assertThat(order.decision().outcome()).as("HoldingRule now catches this before the fill step ever runs")
+			.isEqualTo("BLOCK");
 
 		ResponseEntity<String> fillResponse = fill(order.id(), null);
 		assertThat(fillResponse.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
-		assertThat(fillResponse.getBody()).contains("450000").contains("KSTL").contains("500000");
+		assertThat(fillResponse.getBody()).contains("BLOCKed");
 
 		assertThat(fundCash(hgfFundId)).as("a refused sell must not touch cash").isEqualByComparingTo(HGF_STARTING_CASH);
 		assertThat(holdingQuantity(hgfFundId, "KSTL")).as("a refused sell must not touch the holding")
 			.isEqualTo(HGF_KSTL_STARTING_HOLDING);
 		assertThat(orderStatus(order.id())).as("a refused fill must not change the order's status")
-			.isEqualTo(order.decision().outcome());
+			.isEqualTo("BLOCK");
+	}
+
+	/**
+	 * Defense in depth for issue #21's oversell guard, still meaningful once HoldingRule (issue #23)
+	 * exists: a SELL that PASSes at decision time (HoldingRule sees 450,000 available then) but whose
+	 * fund holding is reduced by some other means before the fill runs -- a correction applied
+	 * directly, or any path outside the normal order flow -- must still be refused at fill time
+	 * rather than taking the holding negative. The order is 200,000 KSTL, exactly at the order-size
+	 * threshold (10% of the 2,000,000-share average daily volume) so it still PASSes; the holding is
+	 * then dropped straight to 100,000, well under the order's quantity, before fill runs.
+	 */
+	@Test
+	void fillStillRefusesAnOversellWhenTheHoldingDropsAfterTheDecision() throws Exception {
+		OrderView order = readView(submit("fill-oversell-race", hgfFundId, "SELL", "KSTL", 200_000L));
+		assertThat(order.decision().outcome()).isEqualTo("PASS");
+
+		jdbcTemplate.update("""
+				UPDATE holding SET quantity = 100000 WHERE fund_id = ?
+				  AND security_id = (SELECT id FROM security WHERE ticker = 'KSTL')
+				""", hgfFundId);
+
+		ResponseEntity<String> fillResponse = fill(order.id(), null);
+		assertThat(fillResponse.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+		assertThat(fillResponse.getBody()).contains("100000").contains("KSTL").contains("200000");
+
+		assertThat(fundCash(hgfFundId)).as("a refused sell must not touch cash").isEqualByComparingTo(HGF_STARTING_CASH);
+		assertThat(holdingQuantity(hgfFundId, "KSTL")).as("a refused sell must not touch the holding again")
+			.isEqualTo(100_000L);
+		assertThat(orderStatus(order.id())).as("a refused fill must not change the order's status")
+			.isEqualTo("PASS");
 	}
 
 	/**

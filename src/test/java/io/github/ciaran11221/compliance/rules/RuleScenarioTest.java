@@ -26,7 +26,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 class RuleScenarioTest {
 
 	private static final List<ComplianceRule> RULES = List
-		.of(new RestrictedListRule(), new CashRule(), new OrderSizeRule(), new DiversificationRule());
+		.of(new RestrictedListRule(), new CashRule(), new OrderSizeRule(), new DiversificationRule(),
+				new HoldingRule());
 
 	@TestFactory
 	List<DynamicTest> ruleScenarios() {

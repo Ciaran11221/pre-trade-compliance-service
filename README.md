@@ -15,8 +15,9 @@ A fund manager wants to buy $10M of a stock for a $1,000M fund. Once the order r
 | Order in | `POST /api/orders`. The same `clientOrderId` with the same body returns the stored answer; with a different body, 409. |
 | One at a time | The fund's row is locked for the rest of the check, so two orders cannot spend the same cash. |
 | Held for a second person | Sender marked out of office; or the same fund and stock, same side and a similar size, within the last few minutes; or the opposite side in that window. |
-| Rules | Restricted list (BLOCK), 75-5-10 (BLOCK), cash net of pending orders (BLOCK), size above a share of average daily volume (REVIEW). Any BLOCK blocks, else any REVIEW reviews, else PASS. |
+| Rules | Restricted list (BLOCK), 75-5-10 (BLOCK), cash net of pending orders (BLOCK), a sell above the holding net of pending sells (BLOCK), size above a share of average daily volume (REVIEW). Any BLOCK blocks, else any REVIEW reviews, else PASS. |
 | Stored | The order, the decision, each rule's result, and the settings, holdings and prices it was based on, so a decision can be explained after limits change. |
+| Filled | `POST /api/orders/{id}/fill`, under the same fund lock: a buy adds the shares to the holding and takes their cost from cash, a sell does the reverse. The next order is checked against the new position. |
 
 **Worked example (a test, word for word).** Fund A: $1,000M, holds $45M of stock X. Buy $10M of X: now $55M, 5.5%, so X joins the group of positions over 5%.
 - The fund already has $150M over 5%: total $205M, 20.5%. PASS.
@@ -113,7 +114,7 @@ The `local` profile loads demo funds, stocks and staff and ships a development-o
 - Government securities and holdings in other investment companies are exempt from 75-5-10 in the real rule. Not modelled.
 - Voting control is checked per security, not pooled across an issuer's share classes.
 - The reading of 75-5-10 at the moment of purchase (a fund pushed over by price moves is not forced to sell) is an interpretation. It has not been reviewed by a compliance professional.
-- A fill marks the order filled but does not update holdings or cash.
+- A fill applies at one price for the whole quantity.
 - No market data, broker routing, partial fills, notifications, frontend, or API documentation page.
 - Out-of-office status is a flag on the staff table, not a feed from an HR system.
 
