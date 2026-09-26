@@ -239,7 +239,8 @@ class QuarantineAssignmentTest {
 				VALUES (?, 'SENDER_OUT_OF_OFFICE', NULL, ?, ?, NULL, NULL)
 				""", passed.id(), Timestamp.from(FIXED_START), Timestamp.from(FIXED_START.plusSeconds(1800))))
 			.as("quarantine_assignment_required (NOT VALID) must still reject a new row's NULL assignment")
-			.isInstanceOf(DataIntegrityViolationException.class);
+			.isInstanceOf(DataIntegrityViolationException.class)
+			.hasMessageContaining("quarantine_assignment_required");
 	}
 
 	/**
@@ -256,7 +257,8 @@ class QuarantineAssignmentTest {
 				VALUES (?, 'SENDER_OUT_OF_OFFICE', NULL, ?, ?, 'ASSIGNED', NULL)
 				""", passed.id(), Timestamp.from(FIXED_START), Timestamp.from(FIXED_START.plusSeconds(1800))))
 			.as("quarantine_assignment_matches_assignee (NOT VALID) must reject ASSIGNED with no assignee")
-			.isInstanceOf(DataIntegrityViolationException.class);
+			.isInstanceOf(DataIntegrityViolationException.class)
+			.hasMessageContaining("quarantine_assignment_matches_assignee");
 	}
 
 	// ---- helpers ----

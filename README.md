@@ -79,7 +79,8 @@ With the service running on the `local` profile, http://localhost:8080/swagger-u
 **The second person may not be in.**
 - **Problem:** a held order waits for a supervisor who is on leave. Separately, a login belonging to someone on leave may be in someone else's hands.
 - **Decision:**
-  - A held order is open to any in-office supervisor other than the sender. If none is in, it is assigned to the sender's named backup, then to compliance.
+  - A held order is open to any in-office supervisor other than the sender. If none is in, it is assigned to the sender's named backup, then to compliance. If nobody is in, it is recorded unassigned and left to expire.
+  - The order records which of these applied when it was held (`assignment`: `ANY_SUPERVISOR`, `ASSIGNED` or `UNASSIGNED`), so someone returning later does not rewrite what happened. Orders held before this field existed read `NOT_RECORDED`.
   - Anyone marked out of office cannot release, reject or approve.
   - Their own orders are held.
 - **Why:** a release that waits for someone on holiday isn't a control, and an action from an absent person's login is the one most likely to be stolen.
