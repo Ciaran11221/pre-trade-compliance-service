@@ -1,0 +1,4 @@
+#!/bin/sh
+# Refuses a commit whose message has a banned word, emoji or em dash.
+# Enable with: git config core.hooksPath .githooks
+sh "$(dirname "$0")/check-writing.sh" < "$1"
