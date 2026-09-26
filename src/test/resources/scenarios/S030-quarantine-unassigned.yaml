@@ -24,4 +24,4 @@ steps:
     roles: [TRADER]
     action: submit-order
     fields: {side: BUY, ticker: KSTL, quantity: 1050, ref: o2}
-    expect: {httpStatus: 201, resultStatus: QUARANTINED, quarantineReason: POSSIBLE_DUPLICATE, unassigned: true}
+    expect: {httpStatus: 201, resultStatus: QUARANTINED, quarantineReason: POSSIBLE_DUPLICATE, unassigned: true, assignment: UNASSIGNED}

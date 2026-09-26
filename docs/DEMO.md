@@ -72,7 +72,9 @@ As **anne**, buy 1,000 ZPHR for HGF. BLOCK:
 
 Within 5 minutes of scene 1, as **anne**, sell KSTL for HGF (`"side":"SELL"`, any quantity). You get `"status":"QUARANTINED"` with:
 
-    "quarantine":{"reason":"OPPOSITE_SIDE","matchedOrderId":2, ... "expiresAt": 30 minutes later}
+    "quarantine":{"reason":"OPPOSITE_SIDE","matchedOrderId":2,"assignment":"ANY_SUPERVISOR","assignedTo":null, ... "expiresAt": 30 minutes later}
+
+`ANY_SUPERVISOR` with no `assignedTo` means any in-office supervisor other than anne can release it. With every supervisor out, the same order would show `ASSIGNED` and a named backup, or `UNASSIGNED`.
 
 Buying and selling the same stock for the same fund minutes apart is usually a mistake, so no rule runs until a supervisor looks. After 5 minutes the same sell goes straight to the rules.
 

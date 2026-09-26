@@ -255,7 +255,7 @@ class QuarantineScenarioTest {
 		}
 
 		boolean needsView = expect.resultStatus() != null || expect.quarantineReason() != null
-				|| expect.assignedTo() != null || Boolean.TRUE.equals(expect.unassigned());
+				|| expect.assignedTo() != null || Boolean.TRUE.equals(expect.unassigned()) || expect.assignment() != null;
 		if (!needsView) {
 			return;
 		}
@@ -286,6 +286,17 @@ class QuarantineScenarioTest {
 			assertThat(view.quarantine().assignedTo())
 				.as("expected no assignee for a \"%s\" step with fields %s", step.action(), step.fields())
 				.isNull();
+			// issue #27: "unassigned" means the recorded state is UNASSIGNED, not merely that
+			// assignedTo happens to be null -- ANY_SUPERVISOR is also null and must never pass here.
+			assertThat(view.quarantine().assignment())
+				.as("expected assignment UNASSIGNED for a \"%s\" step with fields %s", step.action(), step.fields())
+				.isEqualTo("UNASSIGNED");
+		}
+		if (expect.assignment() != null) {
+			assertThat(view.quarantine()).isNotNull();
+			assertThat(view.quarantine().assignment())
+				.as("quarantine assignment for a \"%s\" step with fields %s", step.action(), step.fields())
+				.isEqualTo(expect.assignment());
 		}
 	}
 
