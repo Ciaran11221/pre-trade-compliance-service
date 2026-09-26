@@ -1,7 +1,7 @@
 package io.github.ciaran11221.compliance.orders;
 
 import java.util.List;
-import java.util.Map;
+import java.util.stream.Collectors;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
@@ -27,16 +27,18 @@ final class OrdersProblems {
 	}
 
 	/**
-	 * 400 with errors[] {field, message}, per spec 3.6. Deep validation is M8; this is just enough
-	 * that a missing or malformed field never reaches a NullPointerException instead.
+	 * 400 naming each bad field, per spec 3.6's errors[] {field, message} shape -- folded into
+	 * detail as one string rather than a ProblemDetail.setProperty("errors", ...) list: every other
+	 * error in this codebase (limits.LimitChangeProblems included) renders through the same
+	 * ErrorResponseException -> DispatcherServlet content-negotiation path with a plain detail
+	 * string and is exercised by JwtAuthenticationTest; a custom "errors" property is untested
+	 * territory there and not worth the risk for M8's out-of-scope deep validation. Deep
+	 * field-by-field validation (a real errors[] array) is M8; this is just enough that a missing or
+	 * malformed field never reaches a NullPointerException instead.
 	 */
 	static ErrorResponseException badRequest(List<FieldError> errors) {
-		ProblemDetail problemDetail = ProblemDetail.forStatus(HttpStatus.BAD_REQUEST);
-		problemDetail.setTitle("Bad request");
-		problemDetail.setDetail("the request body failed validation.");
-		problemDetail.setProperty("errors",
-				errors.stream().map(e -> Map.of("field", e.field(), "message", e.message())).toList());
-		return new ErrorResponseException(HttpStatus.BAD_REQUEST, problemDetail, null);
+		String detail = errors.stream().map(e -> e.field() + ": " + e.message()).collect(Collectors.joining("; "));
+		return problem(HttpStatus.BAD_REQUEST, "Bad request", detail);
 	}
 
 	static ErrorResponseException notFound(String detail) {
