@@ -5,3 +5,8 @@ GET,/api/limit-changes/{id},SUPERVISOR;COMPLIANCE;EXECUTIVE
 POST,/api/limit-changes/{id}/approvals,SUPERVISOR;COMPLIANCE;EXECUTIVE
 POST,/api/limit-changes/{id}/cancel,SUPERVISOR;COMPLIANCE;EXECUTIVE
 GET,/api/limits,ANY
+POST,/api/orders,TRADER
+GET,/api/orders/{id},TRADER;SUPERVISOR;COMPLIANCE
+GET,/api/funds/{fundId}/orders,TRADER;SUPERVISOR;COMPLIANCE
+POST,/api/orders/{id}/fill,TRADER
+POST,/api/orders/{id}/cancel,TRADER

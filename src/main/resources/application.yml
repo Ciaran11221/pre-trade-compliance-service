@@ -11,6 +11,18 @@ spring:
       ddl-auto: validate
   flyway:
     locations: classpath:db/migration
+  mvc:
+    problemdetails:
+      # Off by default in Spring Boot: without it, an ErrorResponseException a controller throws
+      # (limits.LimitChangeProblems, orders.OrdersProblems) only gets its status code applied --
+      # DefaultHandlerExceptionResolver calls response.sendError() and lets the servlet container's
+      # own /error page (Boot's BasicErrorController, a plain {"timestamp",...,"status","error",
+      # "path"} body) render instead of writing our ProblemDetail as application/problem+json. Spec
+      # 3.6 requires every error to actually BE a ProblemDetail body, not just carry the right
+      # status code -- found while body-asserting orders.OrderIntakeHttpTest's 400 case; the same
+      # gap silently affected every 404/409/422 limits.LimitChangeController already returns, none
+      # of which had a test checking response body content before this.
+      enabled: true
 
 compliance:
   security:

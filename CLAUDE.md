@@ -16,6 +16,7 @@ Checks a fund's buy and sell orders before they reach a broker: the restricted l
 | `security` | Token checking, deny-by-default rules, known-staff check, 401/403 bodies |
 | `rules` | The compliance rules (restricted list, diversification, cash, order size), the engine that combines their results, and the firm-limits read path |
 | `limits` | Limit changes: request, impact preview, approvals scaled by money freed, cooling-off, cancel. Requests, approvals, activations and refusals are insert-only |
+| `orders` | Order intake: idempotent create with a per-fund lock, the stored decision (rule results, settings and fund-state snapshot), read, fill and cancel. Orders, events, decisions and rule results are insert-only |
 
 | Path | Holds |
 |---|---|
