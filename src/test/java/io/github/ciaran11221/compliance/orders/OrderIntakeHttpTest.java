@@ -159,24 +159,32 @@ class OrderIntakeHttpTest {
 		assertThat(fillResponse.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
 	}
 
-	// R__seed.sql: HGF holds 450,000 KSTL. A sell above that holding blocks; a sell of exactly that
-	// holding passes (the boundary is inclusive) -- issue #23.
+	// R__seed.sql: HGF holds 450,000 KSTL. A sell above that holding blocks the holding rule (and so
+	// the overall decision) -- issue #23. A sell of exactly that holding passes the holding rule
+	// itself (the boundary is inclusive); the overall decision for that second order is REVIEW, not
+	// PASS, because 450,000 shares is itself above ORDER_SIZE_ADV_PCT's own threshold against KSTL's
+	// 2,000,000-share average daily volume (order-size, a pre-existing and unrelated rule, still
+	// runs) -- REVIEW is not a block, so the holding rule's own PASS is what this test asserts.
 	@Test
-	void sellAboveTheFundsHoldingBlocksAndSellOfExactlyTheHoldingPasses() throws Exception {
+	void sellAboveTheFundsHoldingBlocksAndSellOfExactlyTheHoldingPassesTheHoldingRule() throws Exception {
 		OrderView above = readView(submit("http-sell-above-holding", hgfFundId, "SELL", "KSTL", 1_000_000L));
 		assertThat(above.status()).isEqualTo("BLOCK");
 		assertThat(above.decision().outcome()).isEqualTo("BLOCK");
-		RuleResultView holdingResult = above.decision()
+		assertThat(holdingRuleResult(above).outcome()).isEqualTo("BLOCK");
+
+		OrderView exact = readView(submit("http-sell-exact-holding", hgfFundId, "SELL", "KSTL", 450_000L));
+		assertThat(holdingRuleResult(exact).outcome()).isEqualTo("PASS");
+		assertThat(exact.decision().outcome()).as("order-size still reviews a sell this large against KSTL's ADV")
+			.isEqualTo("REVIEW");
+	}
+
+	private RuleResultView holdingRuleResult(OrderView order) {
+		return order.decision()
 			.ruleResults()
 			.stream()
 			.filter(r -> r.ruleName().equals("holding"))
 			.findFirst()
-			.orElseThrow(() -> new AssertionError("no holding rule result on order " + above.id()));
-		assertThat(holdingResult.outcome()).isEqualTo("BLOCK");
-
-		OrderView exact = readView(submit("http-sell-exact-holding", hgfFundId, "SELL", "KSTL", 450_000L));
-		assertThat(exact.status()).isEqualTo("PASS");
-		assertThat(exact.decision().outcome()).isEqualTo("PASS");
+			.orElseThrow(() -> new AssertionError("no holding rule result on order " + order.id()));
 	}
 
 	@Test
