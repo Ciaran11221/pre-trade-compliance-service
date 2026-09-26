@@ -2,6 +2,8 @@ package io.github.ciaran11221.compliance.reference;
 
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
+import java.util.List;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,32 +29,46 @@ public class StaffService {
 
 		String from = body != null ? body.from() : null;
 		String until = body != null ? body.until() : null;
+		List<ReferenceProblems.FieldError> errors = new ArrayList<>();
+
 		if ((from == null) != (until == null)) {
-			throw ReferenceProblems
-				.badRequest("from and until must both be set, or both be absent/null (to clear), never just one.");
+			errors.add(new ReferenceProblems.FieldError("from",
+				"from and until must both be set, or both be absent/null (to clear), never just one."));
+			errors.add(new ReferenceProblems.FieldError("until",
+				"from and until must both be set, or both be absent/null (to clear), never just one."));
 		}
 
 		if (from == null) {
 			staff.setOutOfOffice(null, null);
-		}
-		else {
-			Instant fromInstant = parseInstant("from", from);
-			Instant untilInstant = parseInstant("until", until);
-			if (!fromInstant.isBefore(untilInstant)) {
-				throw ReferenceProblems.badRequest("from must be strictly before until.");
+		} else {
+			Instant fromInstant = parseInstant("from", from, errors);
+			Instant untilInstant = parseInstant("until", until, errors);
+			if (fromInstant != null && untilInstant != null && !fromInstant.isBefore(untilInstant)) {
+				errors.add(new ReferenceProblems.FieldError("from", "from must be strictly before until."));
+			}
+			if (!errors.isEmpty()) {
+				throw ReferenceProblems.badRequest(errors);
 			}
 			staff.setOutOfOffice(fromInstant, untilInstant);
+		}
+
+		if (!errors.isEmpty()) {
+			throw ReferenceProblems.badRequest(errors);
 		}
 
 		return toView(staff);
 	}
 
-	private Instant parseInstant(String field, String value) {
+	private Instant parseInstant(String field, String value, List<ReferenceProblems.FieldError> errors) {
+		if (value == null) {
+			return null;
+		}
 		try {
 			return Instant.parse(value);
 		}
 		catch (DateTimeParseException ex) {
-			throw ReferenceProblems.badRequest(field + " must be an ISO-8601 instant, e.g. 2026-01-01T00:00:00Z.");
+			errors.add(new ReferenceProblems.FieldError(field, "must be an ISO-8601 instant, e.g. 2026-01-01T00:00:00Z."));
+			return null;
 		}
 	}
 

@@ -1,15 +1,17 @@
 package io.github.ciaran11221.compliance.orders;
 
 import java.util.List;
-import java.util.stream.Collectors;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.web.ErrorResponseException;
 
+import io.github.ciaran11221.compliance.web.ApiProblems;
+
 /**
  * Every error the orders package's controller can produce, as application/problem+json -- same
- * pattern as limits.LimitChangeProblems.
+ * pattern as limits.LimitChangeProblems. BadRequest delegates to the shared ApiProblems.badRequest
+ * which produces an errors[] array with {field, message} entries per spec 3.6.
  */
 final class OrdersProblems {
 
@@ -27,18 +29,14 @@ final class OrdersProblems {
 	}
 
 	/**
-	 * 400 naming each bad field, per spec 3.6's errors[] {field, message} shape -- folded into
-	 * detail as one string rather than a ProblemDetail.setProperty("errors", ...) list: every other
-	 * error in this codebase (limits.LimitChangeProblems included) renders through the same
-	 * ErrorResponseException -> DispatcherServlet content-negotiation path with a plain detail
-	 * string and is exercised by JwtAuthenticationTest; a custom "errors" property is untested
-	 * territory there and not worth the risk for M8's out-of-scope deep validation. Deep
-	 * field-by-field validation (a real errors[] array) is M8; this is just enough that a missing or
-	 * malformed field never reaches a NullPointerException instead.
+	 * 400 naming each bad field as an errors[] array: delegates to the shared web.ApiProblems
+	 * which creates a ProblemDetail with a proper errors property.
 	 */
 	static ErrorResponseException badRequest(List<FieldError> errors) {
-		String detail = errors.stream().map(e -> e.field() + ": " + e.message()).collect(Collectors.joining("; "));
-		return problem(HttpStatus.BAD_REQUEST, "Bad request", detail);
+		List<ApiProblems.FieldError> apiErrors = errors.stream()
+			.map(e -> new ApiProblems.FieldError(e.field(), e.message()))
+			.toList();
+		return ApiProblems.badRequest(apiErrors);
 	}
 
 	static ErrorResponseException notFound(String detail) {

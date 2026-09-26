@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -69,6 +70,11 @@ public class LimitChangeService {
 	// Spring not to roll back on either of them is a no-op, not a risk.
 	@Transactional(noRollbackFor = ErrorResponseException.class)
 	public LimitChangeView requestChange(String requesterId, LimitChangeRequestBody body) {
+		List<LimitChangeProblems.FieldError> errors = validate(body);
+		if (!errors.isEmpty()) {
+			throw LimitChangeProblems.badRequest(errors);
+		}
+
 		LimitKey key = parseKey(body.key());
 		Instant now = clock.instant();
 
@@ -316,6 +322,28 @@ public class LimitChangeService {
 			LimitChangeRepository.WaitingChangeRow waiting) {
 		return LimitChangeProblems.conflict(settingKey + " already has a change waiting to activate (request "
 				+ waiting.requestId() + ", activates at " + waiting.activatesAt() + "); cancel it first.");
+	}
+
+	private List<LimitChangeProblems.FieldError> validate(LimitChangeRequestBody body) {
+		List<LimitChangeProblems.FieldError> errors = new ArrayList<>();
+		if (body == null) {
+			errors.add(new LimitChangeProblems.FieldError("body", "a key, newValue and reason are required."));
+			return errors;
+		}
+		if (isBlank(body.key())) {
+			errors.add(new LimitChangeProblems.FieldError("key", "key is required."));
+		}
+		if (body.newValue() == null) {
+			errors.add(new LimitChangeProblems.FieldError("newValue", "newValue is required."));
+		}
+		if (isBlank(body.reason())) {
+			errors.add(new LimitChangeProblems.FieldError("reason", "reason is required."));
+		}
+		return errors;
+	}
+
+	private boolean isBlank(String value) {
+		return value == null || value.isBlank();
 	}
 
 	private LimitKey parseKey(String key) {

@@ -36,10 +36,8 @@ public class LimitChangeController {
 			// required = false: a missing or empty body must still reach @PreAuthorize before
 			// failing, so a disallowed role gets 403 rather than a 400 that races the authorization
 			// check (see RouteAccessMatrixTest, which calls every route with no body at all).
+			// Validation of the body happens in LimitChangeService.requestChange.
 			@RequestBody(required = false) LimitChangeRequestBody body) {
-		if (body == null) {
-			throw LimitChangeProblems.unprocessable("a key, newValue and reason are required.");
-		}
 		LimitChangeView view = limitChangeService.requestChange(jwt.getSubject(), body);
 		return ResponseEntity.status(HttpStatus.CREATED).body(view);
 	}
