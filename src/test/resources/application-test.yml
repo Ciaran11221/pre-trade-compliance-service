@@ -14,3 +14,9 @@ compliance:
     # that need a signed token call TokenTool.signedToken(...) themselves with this exact value
     # (see support/TokenTool.java).
     jwt-secret: test-only-secret-9f3c2b7a1e6d4508b0c7d2a4e9f61c3b
+  quarantine:
+    expiry-job:
+      # test profile only (M7b, issue #14): QuarantineSchedulingConfig is @ConditionalOnProperty on
+      # this key, so no test ever races a background @Scheduled trigger of QuarantineExpiryJob --
+      # tests call runExpiry() directly instead (see QuarantineExpiryJobTest).
+      enabled: false
