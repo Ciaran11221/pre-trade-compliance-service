@@ -22,7 +22,7 @@ class ComplianceRuleCoverageTest {
 		Set<String> required = new ComplianceRuleCoverage().requiredTags();
 
 		assertThat(required).containsExactlyInAnyOrder("rule:restricted-list", "rule:cash", "rule:order-size",
-				"rule:diversification");
+				"rule:diversification", "rule:holding");
 	}
 
 	@Test
