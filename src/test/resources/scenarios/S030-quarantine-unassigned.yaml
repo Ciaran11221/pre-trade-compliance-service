@@ -1,0 +1,27 @@
+id: S030
+title: With nobody eligible in office, a quarantine is recorded unassigned
+kind: quarantine
+covers: [quarantine:unassigned]
+given:
+  outOfOffice:
+    - {staffId: sup-1, from: "2025-12-01T00:00:00Z", until: "2026-02-01T00:00:00Z"}
+    - {staffId: sup-2, from: "2025-12-01T00:00:00Z", until: "2026-02-01T00:00:00Z"}
+    - {staffId: sup-3, from: "2025-12-01T00:00:00Z", until: "2026-02-01T00:00:00Z"}
+    - {staffId: comp-1, from: "2025-12-01T00:00:00Z", until: "2026-02-01T00:00:00Z"}
+then:
+  outcome: "anne's quarantine is recorded unassigned"
+  note: >
+    Every SUPERVISOR, anne's backup among them, and the one COMPLIANCE user are all out of office.
+    Nobody is available, so the quarantine is recorded unassigned -- still queryable as such, and
+    left to expire if nobody returns in time.
+steps:
+  - actor: brian
+    roles: [TRADER]
+    action: submit-order
+    fields: {side: BUY, ticker: KSTL, quantity: 1000, ref: o1}
+    expect: {httpStatus: 201, resultStatus: PASS}
+  - actor: anne
+    roles: [TRADER]
+    action: submit-order
+    fields: {side: BUY, ticker: KSTL, quantity: 1050, ref: o2}
+    expect: {httpStatus: 201, resultStatus: QUARANTINED, quarantineReason: POSSIBLE_DUPLICATE, unassigned: true}

@@ -1,0 +1,19 @@
+id: S025
+title: A sender marked out of office is quarantined outright
+kind: quarantine
+covers: [quarantine:sender-out-of-office]
+given:
+  outOfOffice:
+    - {staffId: brian, from: "2025-12-01T00:00:00Z", until: "2026-02-01T00:00:00Z"}
+then:
+  outcome: "brian's order is quarantined because brian is marked out of office"
+  note: >
+    brian is out of office spanning the whole scenario (the test clock starts at
+    2026-01-01T00:00:00Z, inside the window). Sender-out-of-office is checked before the lookback,
+    so this fires even though brian's order has nothing to look back on.
+steps:
+  - actor: brian
+    roles: [TRADER]
+    action: submit-order
+    fields: {side: BUY, ticker: KSTL, quantity: 1000, ref: o1}
+    expect: {httpStatus: 201, resultStatus: QUARANTINED, quarantineReason: SENDER_OUT_OF_OFFICE}

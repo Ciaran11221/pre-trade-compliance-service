@@ -1,0 +1,26 @@
+id: S031
+title: An overdue quarantine reads as EXPIRED before the scheduled job ever runs
+kind: quarantine
+covers: [quarantine:expiry-without-job]
+given:
+  outOfOffice:
+    - {staffId: brian, from: "2025-12-01T00:00:00Z", until: "2026-02-01T00:00:00Z"}
+then:
+  outcome: "brian's quarantined order reads as EXPIRED once QUARANTINE_EXPIRY_MINUTES has passed, with no job involved"
+  note: >
+    brian's order is quarantined (out of office). The test clock is advanced past the default
+    QUARANTINE_EXPIRY_MINUTES (30) with no scheduled job ever run in this test -- GET
+    /api/orders/{id} computes EXPIRED itself, on the clock alone.
+steps:
+  - actor: brian
+    roles: [TRADER]
+    action: submit-order
+    fields: {side: BUY, ticker: KSTL, quantity: 1000, ref: o1}
+    expect: {httpStatus: 201, resultStatus: QUARANTINED}
+  - action: advance-clock
+    fields: {minutes: 31}
+  - actor: anne
+    roles: [TRADER]
+    action: get-order
+    fields: {ref: o1}
+    expect: {httpStatus: 200, resultStatus: EXPIRED}

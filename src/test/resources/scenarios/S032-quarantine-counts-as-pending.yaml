@@ -1,0 +1,31 @@
+id: S032
+title: A quarantined order counts as pending exposure against cash
+kind: quarantine
+covers: [quarantine:counts-as-pending]
+given:
+  fund: {code: QRFUND, totalAssets: "10000000000", cash: "100000000", diversified: false}
+  securities:
+    - {ticker: QRSECA, price: "600", votingSharesOutstanding: 50000000, avgDailyVolume: 10000000}
+    - {ticker: QRSECB, price: "600", votingSharesOutstanding: 50000000, avgDailyVolume: 10000000}
+  outOfOffice:
+    - {staffId: brian, from: "2025-12-01T00:00:00Z", until: "2026-02-01T00:00:00Z"}
+then:
+  outcome: "anne's order is blocked on cash because brian's still-quarantined order already counts against it"
+  note: >
+    QRFUND has $100,000,000 cash and is not diversified (isolating the cash rule). brian (out of
+    office) buys 100,000 QRSECA @ $600 = $60,000,000; quarantined outright (sender-out-of-office),
+    so it has no decision yet, but it still counts as pending exposure. anne then buys 100,000
+    QRSECB @ $600 = $60,000,000 -- a different security, so it is not itself flagged by the lookback
+    -- and reaches the cash rule, which sees only $100,000,000 - $60,000,000 = $40,000,000
+    available, less than the $60,000,000 order value, so it BLOCKs.
+steps:
+  - actor: brian
+    roles: [TRADER]
+    action: submit-order
+    fields: {side: BUY, ticker: QRSECA, quantity: 100000, ref: o1}
+    expect: {httpStatus: 201, resultStatus: QUARANTINED, quarantineReason: SENDER_OUT_OF_OFFICE}
+  - actor: anne
+    roles: [TRADER]
+    action: submit-order
+    fields: {side: BUY, ticker: QRSECB, quantity: 100000, ref: o2}
+    expect: {httpStatus: 201, resultStatus: BLOCK}

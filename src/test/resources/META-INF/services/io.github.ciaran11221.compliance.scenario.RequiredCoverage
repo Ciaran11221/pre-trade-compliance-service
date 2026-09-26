@@ -1,2 +1,3 @@
 io.github.ciaran11221.compliance.rules.ComplianceRuleCoverage
 io.github.ciaran11221.compliance.limits.LimitChangeCoverage
+io.github.ciaran11221.compliance.quarantine.QuarantineCoverage

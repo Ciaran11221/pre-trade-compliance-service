@@ -1,0 +1,25 @@
+id: S029
+title: With the backup also out of office, a quarantine escalates to an in-office COMPLIANCE user
+kind: quarantine
+covers: [quarantine:escalate-to-compliance]
+given:
+  outOfOffice:
+    - {staffId: sup-1, from: "2025-12-01T00:00:00Z", until: "2026-02-01T00:00:00Z"}
+    - {staffId: sup-2, from: "2025-12-01T00:00:00Z", until: "2026-02-01T00:00:00Z"}
+    - {staffId: sup-3, from: "2025-12-01T00:00:00Z", until: "2026-02-01T00:00:00Z"}
+then:
+  outcome: "anne's quarantine is assigned to comp-1, the in-office COMPLIANCE user"
+  note: >
+    All three SUPERVISORs, including anne's backup sup-2, are out of office. comp-1 (COMPLIANCE) is
+    in office, so escalation falls through to comp-1.
+steps:
+  - actor: brian
+    roles: [TRADER]
+    action: submit-order
+    fields: {side: BUY, ticker: KSTL, quantity: 1000, ref: o1}
+    expect: {httpStatus: 201, resultStatus: PASS}
+  - actor: anne
+    roles: [TRADER]
+    action: submit-order
+    fields: {side: BUY, ticker: KSTL, quantity: 1050, ref: o2}
+    expect: {httpStatus: 201, resultStatus: QUARANTINED, quarantineReason: POSSIBLE_DUPLICATE, assignedTo: comp-1}
