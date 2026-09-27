@@ -31,12 +31,14 @@ Checks a fund's buy and sell orders before they reach a broker: the restricted l
 | `src/test/java/io/github/ciaran11221/compliance/scenario/` | Scenario records, the loader, validation, the index generator, FixtureLoader (fixtures/fund-state/*.yaml), and RequiredCoverage (how a later rule provider plugs into ScenarioCoverageTest). |
 | `docs/SCENARIOS.md` | Generated index of the scenario corpus. Never edit by hand. |
 | `docs/WORKLOG.md` | One row per merged pull request: who wrote it, who reviewed it, test counts. |
+| `scripts/demo.ps1` | Runs the docs/DEMO.md scenes end to end against a real local instance. |
 
 ## Commands
 
 | Task | Command |
 |---|---|
 | Full build and tests (needs Docker running) | `./mvnw verify` |
+| Run the demo end to end | `.\scripts\demo.ps1` |
 | Local database | `docker compose up -d` |
 | Run locally | `./mvnw spring-boot:run -Dspring-boot.run.profiles=local` |
 | Issue a local token | `./mvnw -q test-compile exec:java -Dexec.mainClass=io.github.ciaran11221.compliance.support.TokenTool -Dexec.classpathScope=test -Dexec.args="anne TRADER"` |
