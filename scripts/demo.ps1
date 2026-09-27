@@ -11,21 +11,31 @@
       4. Signs a token for each demo person in PowerShell itself, using the same secret and
          algorithm TokenTool uses, and checks each one against GET /api/me.
       5. Runs the scenes from docs/DEMO.md (1, 1b, 2, 6 and 8) and checks each response against
-         what that file says should happen.
+         what that file says should happen. Each scene prints a plain-English caption ("What this
+         shows" before, "So what" after), so a recording with no voice still explains itself.
       6. Stops the service it started (only that one) and leaves the database running.
 
     Usage:
         .\scripts\demo.ps1
+        .\scripts\demo.ps1 -AutoAdvance 15
         .\scripts\demo.ps1 -NoPause
 
-    Without -NoPause the script pauses for Enter after each scene, so a live audience can read
-    each result before the next one runs. -NoPause runs straight through.
+    By default the script pauses for Enter after each scene, so a live audience can read each
+    result before the next one runs. -AutoAdvance <seconds> waits that long instead, with a
+    countdown, for a recording made without touching the keyboard. -NoPause runs straight through.
 #>
 
 [CmdletBinding()]
 param(
-    [switch]$NoPause
+    [switch]$NoPause,
+    [ValidateRange(0, 600)]
+    [int]$AutoAdvance = 0
 )
+
+if ($NoPause -and $AutoAdvance -gt 0) {
+    Write-Host 'Use -NoPause or -AutoAdvance, not both.' -ForegroundColor Red
+    exit 1
+}
 
 $ErrorActionPreference = 'Stop'
 
@@ -61,12 +71,40 @@ function Add-Check {
     }
 }
 
+function Write-Caption {
+    param(
+        [string]$Label,
+        [string]$Text
+    )
+    Write-Host "  $($Label): $Text" -ForegroundColor Yellow
+}
+
 function Wait-ForEnter {
-    param([string]$Message = 'Press Enter for the next scene')
-    if (-not $NoPause) {
-        Write-Host $Message -ForegroundColor DarkGray
-        [void](Read-Host)
+    param([string]$Next = 'the next scene')
+    if ($NoPause) {
+        return
     }
+    if ($AutoAdvance -gt 0) {
+        for ($remaining = $AutoAdvance; $remaining -gt 0; $remaining--) {
+            Write-Host -NoNewline ("`r{0} in {1,3}s " -f $Next, $remaining) -ForegroundColor DarkGray
+            Start-Sleep -Seconds 1
+        }
+        # Blank the countdown line so the recording keeps only the scene output.
+        Write-Host -NoNewline ("`r" + (' ' * ($Next.Length + 10)) + "`r")
+        return
+    }
+    Write-Host "Press Enter for $Next" -ForegroundColor DarkGray
+    [void](Read-Host)
+}
+
+# The diversification rule reports the post-trade over-5% total and the limit as percentages;
+# read them from the response so a caption never states a number the run did not produce.
+function Format-Pct {
+    param($Value)
+    if ($null -eq $Value) {
+        return '?'
+    }
+    return ([decimal]$Value).ToString('0.##', [System.Globalization.CultureInfo]::InvariantCulture)
 }
 
 function Stop-DemoService {
@@ -375,11 +413,20 @@ try {
     }
     Write-Host 'All 4 tokens accepted.' -ForegroundColor Green
 
+    Write-Host ''
+    Write-Caption 'About this demo' 'a service that checks a fund''s orders before they reach a broker.'
+    Write-Caption 'About this demo' 'each scene sends it real requests. The order''s result is the "status" on each HTTP line.'
+    Write-Caption 'About this demo' 'green PASS lines are this script checking each answer is the expected one.'
+    Write-Caption 'About this demo' 'two funds, HGF and WVF, each $1,000M. KSTL is a stock at $100 a share.'
+    Wait-ForEnter -Next 'scene 1'
+
     # -----------------------------------------------------------------------
     # 5. Scenes
     # -----------------------------------------------------------------------
 
     Write-Scene 'Scene 1: anne buys KSTL for HGF'
+    Write-Caption 'What this shows' 'US law (the 1940 Act) caps a fund''s positions of over 5% each at 25% of the fund in total.'
+    Write-Caption 'What this shows' 'anne, a trader, buys $10M of KSTL for HGF.'
     $scene1Body = @{ clientOrderId = 'demo-hgf-1'; fundId = 1; side = 'BUY'; ticker = 'KSTL'; quantity = 100000 }
     $scene1 = Invoke-DemoApi -Method POST -Path '/api/orders' -Token $tokens['anne'] -Body $scene1Body
     $scene1OrderId = $scene1.Body.id
@@ -388,27 +435,35 @@ try {
     Write-Host "HTTP $($scene1.StatusCode), order id $scene1OrderId, status $($scene1.Body.status)"
     Write-Host "Diversification: $($scene1Diversification.reason)"
     Add-Check -Passed ($scene1.StatusCode -eq 201 -and $scene1.Body.status -eq 'PASS') -Description 'Scene 1: the buy passes'
-    Wait-ForEnter
+    Write-Caption 'So what' "after the buy HGF's over-5% positions total $(Format-Pct $scene1Diversification.measuredValue)%, under the $(Format-Pct $scene1Diversification.limitValue)% limit, so the order is allowed."
+    Wait-ForEnter -Next 'scene 1b'
 
     Write-Scene 'Scene 1b: anne sends the exact same request again'
+    Write-Caption 'What this shows' 'networks drop replies, so a trading system may send the same order twice.'
     $scene1b = Invoke-DemoApi -Method POST -Path '/api/orders' -Token $tokens['anne'] -Body $scene1Body
     Write-Host "First order id $scene1OrderId, second response order id $($scene1b.Body.id)"
     Add-Check -Passed ($scene1b.Body.id -eq $scene1OrderId) -Description 'Scene 1b: the retry returns the same order, not a new one'
-    Wait-ForEnter
+    Write-Caption 'So what' "order $scene1OrderId both times: the retry did not create a second order."
+    Wait-ForEnter -Next 'scene 2'
 
     Write-Scene 'Scene 2: the same buy for WVF, already near the limit'
+    Write-Caption 'What this shows' 'the exact same buy, for WVF, a fund that already has more money in big positions.'
     $scene2Body = @{ clientOrderId = 'demo-wvf-1'; fundId = 2; side = 'BUY'; ticker = 'KSTL'; quantity = 100000 }
     $scene2 = Invoke-DemoApi -Method POST -Path '/api/orders' -Token $tokens['anne'] -Body $scene2Body
     $scene2Diversification = $scene2.Body.decision.ruleResults | Where-Object { $_.ruleName -eq 'diversification' } | Select-Object -First 1
     Write-Host "HTTP $($scene2.StatusCode), order id $($scene2.Body.id), status $($scene2.Body.status)"
     Write-Host "Diversification: $($scene2Diversification.reason)"
     Add-Check -Passed ($scene2.Body.status -eq 'BLOCK') -Description 'Scene 2: the same buy blocks for WVF'
-    Wait-ForEnter
+    Write-Caption 'So what' "WVF would reach $(Format-Pct $scene2Diversification.measuredValue)%, over the $(Format-Pct $scene2Diversification.limitValue)% limit, so it is blocked."
+    Write-Caption 'So what' 'same trade, different fund, different answer: the rule looks at the whole fund.'
+    Wait-ForEnter -Next 'scene 6'
 
     Write-Scene 'Scene 6: brian sends anne''s scene 1 order under a new id'
     if (((Get-Date) - $scene1SentAt).TotalMinutes -ge 5) {
-        Write-Host 'More than 5 minutes since scene 1, so this will not be held as a duplicate. Run the demo again to see it.' -ForegroundColor Yellow
+        Write-Host 'WARNING: more than 5 minutes since scene 1, so this will not be held as a duplicate. Run the demo again to see it.' -ForegroundColor Red
     }
+    Write-Caption 'What this shows' 'brian, a second trader, sends the same buy anne sent a moment ago.'
+    Write-Caption 'What this shows' 'two people filling one request is a common and costly mistake.'
     $scene6Body = @{ clientOrderId = 'demo-brian-1'; fundId = 1; side = 'BUY'; ticker = 'KSTL'; quantity = 100000 }
     $scene6 = Invoke-DemoApi -Method POST -Path '/api/orders' -Token $tokens['brian'] -Body $scene6Body
     $brianOrderId = $scene6.Body.id
@@ -425,9 +480,13 @@ try {
     $reject = Invoke-DemoApi -Method POST -Path "/api/quarantine/$brianOrderId/reject" -Token $tokens['sup-1']
     Write-Host "sup-1 rejects: HTTP $($reject.StatusCode), status $($reject.Body.status)"
     Add-Check -Passed ($reject.StatusCode -eq 200 -and $reject.Body.status -eq 'REJECTED') -Description 'Scene 6: a supervisor rejects the quarantine'
-    Wait-ForEnter
+    Write-Caption 'So what' "brian's order was held, not sent, and matched to anne's order $scene1OrderId."
+    Write-Caption 'So what' 'a trader cannot release it; a supervisor decides, and here sup-1 rejects it.'
+    Wait-ForEnter -Next 'scene 8'
 
     Write-Scene 'Scene 8: changing a limit'
+    Write-Caption 'What this shows' 'the firm sets its own limits at or below the law''s, and every change needs a second person''s approval.'
+    Write-Caption 'What this shows' 'sup-1, a supervisor, first asks for 40%, then for 20%.'
     $overLegalMax = @{ key = 'OVER_LIMIT_BUCKET_PCT'; newValue = 40; reason = 'demo' }
     $overLegalMaxResult = Invoke-DemoApi -Method POST -Path '/api/limit-changes' -Token $tokens['sup-1'] -Body $overLegalMax
     Write-Host "HTTP $($overLegalMaxResult.StatusCode): $($overLegalMaxResult.Body.detail)"
@@ -454,6 +513,8 @@ try {
     $overLimitNow = $limits.Body.OVER_LIMIT_BUCKET_PCT
     Write-Host "GET /api/limits: OVER_LIMIT_BUCKET_PCT is now $overLimitNow"
     Add-Check -Passed ([decimal]$overLimitNow -eq 20) -Description 'Scene 8: the active limit now reads 20'
+    Write-Caption 'So what' 'no approval can pass the legal limit: that lives in code, so 40% is refused outright.'
+    Write-Caption 'So what' "tightening needs a second supervisor: sup-1 cannot approve their own request; sup-2's approval makes $(Format-Pct $overLimitNow)% active."
 
     # -----------------------------------------------------------------------
     # 6. Summary
