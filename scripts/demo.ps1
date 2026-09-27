@@ -30,7 +30,6 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $RepoRoot = Split-Path -Parent $PSScriptRoot
-Set-Location $RepoRoot
 
 $LogPath = Join-Path $RepoRoot 'target\demo-service.log'
 $BaseUrl = 'http://localhost:8080'
@@ -82,10 +81,6 @@ function Stop-DemoService {
         }
     }
 }
-
-# Ctrl+C during a Read-Host pause raises this event before the process exits, so the service
-# still gets stopped rather than left running in the background.
-Register-EngineEvent -SourceIdentifier PowerShell.Exiting -Action { Stop-DemoService } | Out-Null
 
 function Test-PortOpen {
     param(
@@ -199,9 +194,16 @@ function Invoke-DemoApi {
     }
     catch {
         $statusCode = 0
+        # Windows PowerShell 5.1 has usually read the error body already by the time it throws, and
+        # keeps it in ErrorDetails.Message; the response stream is then empty. Read that first.
         $bodyText = $null
+        if ($_.ErrorDetails -and $_.ErrorDetails.Message) {
+            $bodyText = $_.ErrorDetails.Message
+        }
         if ($_.Exception.Response) {
             $statusCode = [int]$_.Exception.Response.StatusCode
+        }
+        if (-not $bodyText -and $_.Exception.Response) {
             try {
                 $stream = $_.Exception.Response.GetResponseStream()
                 $reader = New-Object System.IO.StreamReader($stream)
@@ -247,6 +249,7 @@ if (Test-PortOpen -HostName 'localhost' -Port 8080) {
 }
 
 $ExitCode = 0
+Push-Location $RepoRoot
 
 try {
     # -----------------------------------------------------------------------
@@ -254,16 +257,31 @@ try {
     # -----------------------------------------------------------------------
 
     Write-Host 'Resetting the demo database...'
-    & docker compose down -v
-    & docker compose up -d
+    & docker compose --progress quiet down -v
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host 'docker compose down -v failed; see the lines above.' -ForegroundColor Red
+        exit 1
+    }
+    & docker compose --progress quiet up -d
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host 'docker compose up -d failed; see the lines above.' -ForegroundColor Red
+        exit 1
+    }
 
     $postgresReady = $false
     $deadline = (Get-Date).AddSeconds(30)
     while ((Get-Date) -lt $deadline) {
-        & docker compose exec -T postgres pg_isready -U compliance 2>$null 1>$null
-        if ($LASTEXITCODE -eq 0) {
-            $postgresReady = $true
-            break
+        # -h 127.0.0.1 asks over TCP: on a fresh volume Postgres first runs a setup-only server
+        # with TCP switched off, which would answer a socket check before the real one is up.
+        try {
+            & docker compose exec -T postgres pg_isready -h 127.0.0.1 -U compliance 2>$null 1>$null
+            if ($LASTEXITCODE -eq 0) {
+                $postgresReady = $true
+                break
+            }
+        }
+        catch {
+            # Container still starting; keep polling.
         }
         Start-Sleep -Seconds 1
     }
@@ -303,6 +321,9 @@ try {
     $healthy = $false
     $deadline = (Get-Date).AddSeconds(120)
     while ((Get-Date) -lt $deadline) {
+        if ($serviceProcess.HasExited) {
+            break
+        }
         try {
             $health = Invoke-WebRequest -Uri "$BaseUrl/actuator/health" -UseBasicParsing -TimeoutSec 3
             if ($health.StatusCode -eq 200) {
@@ -320,7 +341,7 @@ try {
         Start-Sleep -Seconds 2
     }
     if (-not $healthy) {
-        Write-Host 'The service did not become healthy within 120 seconds. Last 20 log lines:' -ForegroundColor Red
+        Write-Host "The service did not become healthy within 120 seconds. Last 20 lines of $($LogPath):" -ForegroundColor Red
         if (Test-Path $LogPath) {
             Get-Content -Path $LogPath -Tail 20
         }
@@ -362,6 +383,7 @@ try {
     $scene1Body = @{ clientOrderId = 'demo-hgf-1'; fundId = 1; side = 'BUY'; ticker = 'KSTL'; quantity = 100000 }
     $scene1 = Invoke-DemoApi -Method POST -Path '/api/orders' -Token $tokens['anne'] -Body $scene1Body
     $scene1OrderId = $scene1.Body.id
+    $scene1SentAt = Get-Date
     $scene1Diversification = $scene1.Body.decision.ruleResults | Where-Object { $_.ruleName -eq 'diversification' } | Select-Object -First 1
     Write-Host "HTTP $($scene1.StatusCode), order id $scene1OrderId, status $($scene1.Body.status)"
     Write-Host "Diversification: $($scene1Diversification.reason)"
@@ -384,6 +406,9 @@ try {
     Wait-ForEnter
 
     Write-Scene 'Scene 6: brian sends anne''s scene 1 order under a new id'
+    if (((Get-Date) - $scene1SentAt).TotalMinutes -ge 5) {
+        Write-Host 'More than 5 minutes since scene 1, so this will not be held as a duplicate. Run the demo again to see it.' -ForegroundColor Yellow
+    }
     $scene6Body = @{ clientOrderId = 'demo-brian-1'; fundId = 1; side = 'BUY'; ticker = 'KSTL'; quantity = 100000 }
     $scene6 = Invoke-DemoApi -Method POST -Path '/api/orders' -Token $tokens['brian'] -Body $scene6Body
     $brianOrderId = $scene6.Body.id
@@ -394,12 +419,6 @@ try {
 
     $releaseByAnne = Invoke-DemoApi -Method POST -Path "/api/quarantine/$brianOrderId/release" -Token $tokens['anne']
     $releaseDetail = $releaseByAnne.Body.detail
-    if ([string]::IsNullOrWhiteSpace($releaseDetail)) {
-        # This 403 comes from @PreAuthorize, not from the service layer, and this build sends it
-        # with an empty body despite the ProblemDetail content type: nothing this script can fix,
-        # noted in the PR description as a real service finding.
-        $releaseDetail = '(no detail body on this 403)'
-    }
     Write-Host "anne tries to release: HTTP $($releaseByAnne.StatusCode), $releaseDetail"
     Add-Check -Passed ($releaseByAnne.StatusCode -eq 403) -Description 'Scene 6: a trader cannot release a quarantine'
 
@@ -455,6 +474,7 @@ try {
 }
 finally {
     Stop-DemoService
+    Pop-Location
 }
 
 exit $ExitCode

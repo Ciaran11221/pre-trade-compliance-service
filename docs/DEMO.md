@@ -11,7 +11,9 @@ service, signs tokens for anne, brian, sup-1 and sup-2 itself, then runs scenes 
 below and checks each response against what this file says should happen. It pauses after each
 scene so you can read the result; add `-NoPause` to run straight through. It stops the service it
 started when it finishes, whether that is a normal finish, a check that did not match, or Ctrl+C,
-and leaves the database running. The manual scenes below cover the same ground plus scenes 3, 4,
+and leaves the database running. Scene 6 only quarantines within 5 minutes of scene 1, so the
+script warns if the pauses have run past that. If Docker is not running or port 8080 is taken, it
+says so in one sentence and changes nothing. The manual scenes below cover the same ground plus scenes 3, 4,
 5 and 7, and are how the automated ones were worked out in the first place.
 
 ## 1. Start it
