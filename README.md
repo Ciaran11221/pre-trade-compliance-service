@@ -2,7 +2,7 @@
 
 Checks a fund's buy and sell orders before they reach a broker: the restricted list, the US Investment Company Act of 1940 diversification test (75-5-10), the fund's cash, and order size against normal trading volume. Orders that look like a duplicate, or come from someone marked out of office, are held until a second person releases them. The firm's own limits change only through approvals scaled to how much money a change would free. Every decision and approval is stored, and the database refuses to edit or delete them.
 
-A portfolio project. The funds, stocks and people are fictional.
+A portfolio project. The funds, stocks and people are fictional. To watch it work, see [See it run](#see-it-run).
 
 ## The problem
 
@@ -54,6 +54,24 @@ The requester never approves their own request. At least one approver is from an
 
 Errors are RFC 7807 problem details: 400, 401, 403 with the reason, 404, 409, 422. A 400 lists every bad field at once in `errors[]`, each with `field` and `message`.
 
+## See it run
+
+On Windows, with Docker running, from the project folder:
+
+    .\scripts\demo.ps1
+
+It resets the demo database, starts the service, and sends six of the scenes in [docs/DEMO.md](docs/DEMO.md) through the real API, checking 14 answers:
+
+| Scene | What it checks |
+|---|---|
+| 1, 2 | The worked example: the same $10M buy passes for one fund at 20.5% and blocks for another at 28.5% |
+| 1b | Sending the same request again returns the same order, not a second one |
+| 6 | A second trader's copy of the order is held; a trader cannot release it, a supervisor rejects it |
+| 8 | A limit past the legal maximum is refused; a tighter one needs a second supervisor, not the requester |
+| 9 | The database itself refuses to change or delete a stored decision |
+
+Each scene prints what it shows and why it matters, with the numbers read from the response. `-YourTurn` finishes with orders you choose, sent live. `-AutoAdvance 15` runs without a key press, for a recording. The script stops the service it started when it finishes.
+
 ## Run it
 
 Needs Java 17 and Docker.
@@ -67,7 +85,7 @@ Needs Java 17 and Docker.
 
 The `local` profile loads demo funds, stocks and staff and ships a development-only signing key. Outside it, the service will not start without `JWT_SECRET`. Sign-in itself (passwords, single sign-on) is the firm's existing system; this service trusts a correctly signed token.
 
-With the service running on the `local` profile, http://localhost:8080/swagger-ui/index.html lists every route and lets you send requests from the browser. [docs/DEMO.md](docs/DEMO.md) walks through eight scenes to try, and [docs/LEARNING.md](docs/LEARNING.md) gives an order to read the code in, with changes to try that a test will catch.
+With the service running on the `local` profile, http://localhost:8080/swagger-ui/index.html lists every route and lets you send requests from the browser. [docs/DEMO.md](docs/DEMO.md) walks through nine scenes to try, and [docs/LEARNING.md](docs/LEARNING.md) gives an order to read the code in, with changes to try that a test will catch.
 
 ## Design decisions
 
