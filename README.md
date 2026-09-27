@@ -85,7 +85,7 @@ Needs Java 17 and Docker.
 
 The `local` profile loads demo funds, stocks and staff and ships a development-only signing key. Outside it, the service will not start without `JWT_SECRET`. Sign-in itself (passwords, single sign-on) is the firm's existing system; this service trusts a correctly signed token.
 
-With the service running on the `local` profile, http://localhost:8080/swagger-ui/index.html lists every route and lets you send requests from the browser. [docs/DEMO.md](docs/DEMO.md) walks through nine scenes to try, and [docs/LEARNING.md](docs/LEARNING.md) gives an order to read the code in, with changes to try that a test will catch.
+With the service running on the `local` profile, http://localhost:8080/swagger-ui/index.html lists every route and lets you send requests from the browser. [docs/LOGIC.md](docs/LOGIC.md) shows how every decision is made as IF / ELSE logic you can read in two minutes, [docs/DEMO.md](docs/DEMO.md) walks through nine scenes to try, and [docs/LEARNING.md](docs/LEARNING.md) gives an order to read the code in, with changes to try that a test will catch.
 
 ## Design decisions
 
