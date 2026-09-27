@@ -13,12 +13,16 @@
       5. Runs the scenes from docs/DEMO.md (1, 1b, 2, 6, 8 and 9) and checks each response against
          what that file says should happen. Each scene prints a plain-English caption ("What this
          shows" before, "So what" after), so a recording with no voice still explains itself.
-      6. Stops the service it started (only that one) and leaves the database running.
+      6. With -YourTurn, asks for an order (fund, side, ticker, shares), sends it live and prints
+         the service's answer, as many times as wanted. Nothing here is checked: the point is an
+         order nobody scripted.
+      7. Stops the service it started (only that one) and leaves the database running.
 
     Usage:
         .\scripts\demo.ps1
         .\scripts\demo.ps1 -AutoAdvance 15
         .\scripts\demo.ps1 -NoPause
+        .\scripts\demo.ps1 -YourTurn
 
     By default the script pauses for Enter after each scene, so a live audience can read each
     result before the next one runs. -AutoAdvance <seconds> waits that long instead, with a
@@ -29,7 +33,8 @@
 param(
     [switch]$NoPause,
     [ValidateRange(0, 600)]
-    [int]$AutoAdvance = 0
+    [int]$AutoAdvance = 0,
+    [switch]$YourTurn
 )
 
 if ($NoPause -and $AutoAdvance -gt 0) {
@@ -269,12 +274,14 @@ function Invoke-DemoApi {
 # direct database access would. Windows PowerShell 5.1 turns a native command's stderr into
 # error records when it is redirected, which 'Stop' would throw on; psql's refusal is the
 # expected result here, so this relaxes that for the one call and returns the text instead.
+# "$null |" gives docker exec no input; otherwise it reads this script's own input and swallows
+# whatever is typed or piped for the -YourTurn prompts. The pg_isready call does the same.
 function Invoke-DemoSql {
     param([string]$Sql)
     $previousPreference = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     try {
-        $output = & docker compose exec -T postgres psql -U compliance -d compliance -v ON_ERROR_STOP=1 -c $Sql 2>&1
+        $output = $null | & docker compose exec -T postgres psql -U compliance -d compliance -v ON_ERROR_STOP=1 -c $Sql 2>&1
         $exitCode = $LASTEXITCODE
     }
     finally {
@@ -282,6 +289,30 @@ function Invoke-DemoSql {
     }
     $firstLine = @($output | ForEach-Object { "$_" } | Where-Object { $_ -notmatch '^\s*$' }) | Select-Object -First 1
     return [pscustomobject]@{ ExitCode = $exitCode; FirstLine = $firstLine }
+}
+
+# Asks until the answer is one of the allowed values. Enter (or the end of piped input) takes the
+# default, which is always allowed, so this cannot loop forever.
+function Read-DemoInput {
+    param(
+        [string]$Prompt,
+        [string]$Default,
+        [scriptblock]$IsValid
+    )
+    while ($true) {
+        $answer = Read-Host "$Prompt [$Default]"
+        if ($null -eq $answer) {
+            $answer = ''
+        }
+        $answer = $answer.Trim().ToUpperInvariant()
+        if ($answer -eq '') {
+            $answer = $Default
+        }
+        if (& $IsValid $answer) {
+            return $answer
+        }
+        Write-Host "  '$answer' is not one of the choices." -ForegroundColor Red
+    }
 }
 
 # ---------------------------------------------------------------------------
@@ -331,7 +362,7 @@ try {
         # -h 127.0.0.1 asks over TCP: on a fresh volume Postgres first runs a setup-only server
         # with TCP switched off, which would answer a socket check before the real one is up.
         try {
-            & docker compose exec -T postgres pg_isready -h 127.0.0.1 -U compliance 2>$null 1>$null
+            $null | & docker compose exec -T postgres pg_isready -h 127.0.0.1 -U compliance 2>$null 1>$null
             if ($LASTEXITCODE -eq 0) {
                 $postgresReady = $true
                 break
@@ -572,6 +603,66 @@ try {
             Write-Host "  - $($failedCheck.Description)" -ForegroundColor Red
         }
         $ExitCode = 1
+    }
+
+    # -----------------------------------------------------------------------
+    # 7. Your turn (optional)
+    # -----------------------------------------------------------------------
+
+    if ($YourTurn) {
+        $limitsNow = Invoke-DemoApi -Method GET -Path '/api/limits' -Token $tokens['sup-1']
+        $fundIds = @{ HGF = 1; WVF = 2 }
+        $tickers = @('KSTL', 'NRTH', 'VLCN', 'TDRA', 'QSTN', 'ZPHR')
+
+        Write-Scene 'Your turn: pick an order, predict the answer, then send it'
+        Write-Caption 'What this shows' "the rules on an order nobody scripted. The over-5% limit is now $(Format-Pct $limitsNow.Body.OVER_LIMIT_BUCKET_PCT)% (scene 8)."
+        Write-Caption 'What this shows' 'prices a share: KSTL $100, NRTH $150, VLCN $250, TDRA $200, QSTN $460. ZPHR is restricted.'
+        Write-Caption 'What this shows' "orders go in as anne. One like an order from the last $(Format-Pct $limitsNow.Body.LOOKBACK_MINUTES) minutes is held for a supervisor."
+
+        $turn = 0
+        do {
+            $turn++
+            Write-Host ''
+            $fund = Read-DemoInput -Prompt 'Fund, HGF or WVF' -Default 'WVF' -IsValid { param($a) $fundIds.ContainsKey($a) }
+            $side = Read-DemoInput -Prompt 'BUY or SELL' -Default 'BUY' -IsValid { param($a) $a -eq 'BUY' -or $a -eq 'SELL' }
+            $ticker = Read-DemoInput -Prompt ('Ticker, ' + ($tickers -join ', ')) -Default 'KSTL' -IsValid { param($a) $tickers -contains $a }
+            $shares = Read-DemoInput -Prompt 'Shares' -Default '5000' -IsValid { param($a) ($a -replace ',', '') -match '^[1-9][0-9]{0,8}$' }
+            $shares = [long]($shares -replace ',', '')
+
+            $turnBody = @{
+                clientOrderId = "your-turn-$(Get-Date -Format 'yyyyMMddHHmmss')-$turn"
+                fundId        = $fundIds[$fund]
+                side          = $side
+                ticker        = $ticker
+                quantity      = $shares
+            }
+            $turnResult = Invoke-DemoApi -Method POST -Path '/api/orders' -Token $tokens['anne'] -Body $turnBody
+            Write-Host "$side $shares $ticker for $($fund): HTTP $($turnResult.StatusCode), order id $($turnResult.Body.id), status $($turnResult.Body.status)"
+            if ($turnResult.Body.errors) {
+                foreach ($fieldError in $turnResult.Body.errors) {
+                    Write-Host "  $($fieldError.field): $($fieldError.message)"
+                }
+            }
+            elseif ($turnResult.Body.status -eq 'QUARANTINED') {
+                Write-Host "Quarantine reason $($turnResult.Body.quarantine.reason), matched order id $($turnResult.Body.quarantine.matchedOrderId)"
+                $matchedId = $turnResult.Body.quarantine.matchedOrderId
+                switch ($turnResult.Body.quarantine.reason) {
+                    'POSSIBLE_DUPLICATE' { Write-Caption 'So what' "held for a supervisor before any rule runs: it looks like a repeat of order $matchedId." }
+                    'OPPOSITE_SIDE' { Write-Caption 'So what' "held for a supervisor before any rule runs: it reverses order $matchedId, and a buy and a sell minutes apart are usually a mistake." }
+                    default { Write-Caption 'So what' 'held for a supervisor before any rule runs.' }
+                }
+            }
+            elseif ($turnResult.Body.decision) {
+                foreach ($ruleResult in $turnResult.Body.decision.ruleResults) {
+                    Write-Host "  $($ruleResult.ruleName): $($ruleResult.outcome). $($ruleResult.reason)"
+                }
+            }
+            elseif ($turnResult.Body.detail) {
+                Write-Host "  $($turnResult.Body.detail)"
+            }
+
+            $again = Read-DemoInput -Prompt 'Another order? Y or N' -Default 'N' -IsValid { param($a) $a -eq 'Y' -or $a -eq 'N' }
+        } while ($again -eq 'Y')
     }
 }
 finally {

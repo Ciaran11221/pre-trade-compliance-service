@@ -12,7 +12,10 @@ below and checks each response against what this file says should happen. It pau
 scene so you can read the result; add `-NoPause` to run straight through, or `-AutoAdvance 15`
 to wait 15 seconds per scene with a countdown, for a recording made without touching the
 keyboard. Each scene prints a yellow "What this shows" caption before its result and a "So what"
-caption after it, with the numbers taken from the response. It stops the service it
+caption after it, with the numbers taken from the response. Add `-YourTurn` to finish with orders
+you choose: it asks for a fund, BUY or SELL, a ticker and a share count, sends the order live as
+anne and prints every rule's answer, as many times as you like. Say what you expect before
+pressing Enter. It stops the service it
 started when it finishes, whether that is a normal finish, a check that did not match, or Ctrl+C,
 and leaves the database running. Scene 6 only quarantines within 5 minutes of scene 1, so the
 script warns if the pauses have run past that. If Docker is not running or port 8080 is taken, it
