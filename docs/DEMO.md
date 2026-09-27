@@ -9,7 +9,10 @@ Eight scenes to run against the service on your own machine. Every response quot
 With Docker running and nothing else on port 8080, this resets the demo database, starts the
 service, signs tokens for anne, brian, sup-1 and sup-2 itself, then runs scenes 1, 1b, 2, 6 and 8
 below and checks each response against what this file says should happen. It pauses after each
-scene so you can read the result; add `-NoPause` to run straight through. It stops the service it
+scene so you can read the result; add `-NoPause` to run straight through, or `-AutoAdvance 15`
+to wait 15 seconds per scene with a countdown, for a recording made without touching the
+keyboard. Each scene prints a yellow "What this shows" caption before its result and a "So what"
+caption after it, with the numbers taken from the response. It stops the service it
 started when it finishes, whether that is a normal finish, a check that did not match, or Ctrl+C,
 and leaves the database running. Scene 6 only quarantines within 5 minutes of scene 1, so the
 script warns if the pauses have run past that. If Docker is not running or port 8080 is taken, it
