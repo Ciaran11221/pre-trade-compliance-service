@@ -2,15 +2,7 @@ id: S003
 title: Sell of an over-5% position is not applicable to diversification
 kind: rule
 covers: [rule:diversification]
-given:
-  settings: {}
-  fund: {code: CBF, totalAssets: "1000000000", cash: "100000000", diversified: true}
-  securities:
-    - {ticker: KSTL, price: "100", votingSharesOutstanding: 50000000, avgDailyVolume: 2000000}
-  holdings:
-    - {ticker: KSTL, quantity: 600000}
-  restricted: []
-  pendingOrders: []
+fixture: cbf-6pct-in-kstl
 when:
   order: {side: SELL, ticker: KSTL, quantity: 100000}
 then:

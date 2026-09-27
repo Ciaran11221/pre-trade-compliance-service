@@ -2,16 +2,7 @@ id: S005
 title: Buy that fits cash alone but not after a pending buy blocks
 kind: rule
 covers: [rule:cash]
-given:
-  settings: {}
-  fund: {code: HGF, totalAssets: "1000000000", cash: "10000000", diversified: true}
-  securities:
-    - {ticker: KSTL, price: "100", votingSharesOutstanding: 50000000, avgDailyVolume: 2000000}
-    - {ticker: NRTH, price: "150", votingSharesOutstanding: 40000000, avgDailyVolume: 1500000}
-  holdings: []
-  restricted: []
-  pendingOrders:
-    - {side: BUY, ticker: NRTH, quantity: 40000}
+fixture: hgf-cash-10m-pending-6m
 when:
   order: {side: BUY, ticker: KSTL, quantity: 50000}
 then:

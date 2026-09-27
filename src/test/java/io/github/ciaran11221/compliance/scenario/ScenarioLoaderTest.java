@@ -56,4 +56,19 @@ class ScenarioLoaderTest {
 		assertThat(s005.given().pendingOrders()).containsExactly(new Scenario.Order("BUY", "NRTH", 40000));
 	}
 
+	/**
+	 * S001-S005 name a fixture: (M10 part 2, issue #31) instead of an inline given:.
+	 * ScenarioLoader.loadAllValidated() must resolve that fixture transparently, so a consumer like
+	 * RuleScenarioTest sees exactly the same given() a still-inline scenario (S006 onward) would
+	 * produce, reading fixtures/fund-state/hgf-150m-over-5.yaml verbatim.
+	 */
+	@Test
+	void aFixtureReferenceResolvesToTheSameGivenTheFixtureFileHolds() {
+		Scenario s001 = ScenarioLoader.loadAllValidated().stream().filter(s -> s.id().equals("S001")).findFirst().orElseThrow();
+
+		assertThat(s001.fixture()).isEqualTo("hgf-150m-over-5");
+		Scenario.Given fromFixtureFile = FixtureLoader.load("hgf-150m-over-5");
+		assertThat(s001.given()).isEqualTo(fromFixtureFile);
+	}
+
 }

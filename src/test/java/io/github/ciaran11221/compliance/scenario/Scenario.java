@@ -10,15 +10,29 @@ import java.util.Map;
  * is expected to produce. Every nested shape lives here rather than in its own file, so a reader
  * can see the whole shape of a scenario by opening this one file, the same reason
  * RouteAccessCsv.Row sits inside RouteAccessCsv rather than beside it.
+ *
+ * <p>
+ * A "kind: rule" scenario sets exactly one of {@code given} (the fixture inline, as every scenario
+ * used to) or {@code fixture} (a name resolved against
+ * src/test/resources/fixtures/fund-state/&lt;name&gt;.yaml by FixtureLoader, the same file Cucumber's
+ * fixture steps read) -- never both, never neither; ScenarioValidation enforces this and
+ * ScenarioLoader.loadAllValidated() resolves a set fixture into given before handing scenarios to a
+ * runner, so RuleScenarioTest and every other consumer keep reading given() and never need to know
+ * which form a scenario file used.
  */
-public record Scenario(String id, String title, String kind, List<String> covers, Given given, When when, Then then,
-		List<Step> steps) {
+public record Scenario(String id, String title, String kind, List<String> covers, Given given, String fixture,
+		When when, Then then, List<Step> steps) {
 
 	// Normalizes the one field a "rule"/"quarantine" scenario file never sets: those files predate
 	// steps and have no "steps:" key at all, which Jackson leaves as null rather than an empty
 	// list. Every other component keeps whatever Jackson gives it, unchanged.
 	public Scenario {
 		steps = steps == null ? List.of() : steps;
+	}
+
+	/** Same shape, with given replaced -- used only to resolve a fixture: reference into given. */
+	Scenario withGiven(Given resolvedGiven) {
+		return new Scenario(id, title, kind, covers, resolvedGiven, fixture, when, then, steps);
 	}
 
 	public record Given(Map<String, Object> settings, Fund fund, List<Security> securities, List<Holding> holdings,
