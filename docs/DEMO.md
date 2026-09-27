@@ -1,13 +1,13 @@
 # Demo: run it and watch the rules work
 
-Eight scenes to run against the service on your own machine. Every response quoted here came from a real run of this code on 26 Sep 2026. Order and request ids will differ on your run.
+Nine scenes to run against the service on your own machine. Every response quoted here came from a real run of this code on 26 and 27 Sep 2026. Order and request ids will differ on your run.
 
 ## Run it all with one command
 
     .\scripts\demo.ps1
 
 With Docker running and nothing else on port 8080, this resets the demo database, starts the
-service, signs tokens for anne, brian, sup-1 and sup-2 itself, then runs scenes 1, 1b, 2, 6 and 8
+service, signs tokens for anne, brian, sup-1 and sup-2 itself, then runs scenes 1, 1b, 2, 6, 8 and 9
 below and checks each response against what this file says should happen. It pauses after each
 scene so you can read the result; add `-NoPause` to run straight through, or `-AutoAdvance 15`
 to wait 15 seconds per scene with a countdown, for a recording made without touching the
@@ -138,6 +138,16 @@ Then `POST /api/limit-changes/{id}/approvals`:
 - as **sup-2**: `"status":"ACTIVE"`. `GET /api/limits` now shows `"OVER_LIMIT_BUCKET_PCT":20.0000`.
 
 Now try loosening it back to 25. After scene 7, HGF sits at 20.5%, above the new 20%, so going back to 25 would hide a breach that exists today. That makes it a large loosening: 3 approvals including one COMPLIANCE, and a 24-hour wait before it takes effect. The tests move a fake clock to check the 24 hours; on a live run you would wait.
+
+## Scene 9: nobody can rewrite a decision
+
+Scene 2's order was blocked. From the project folder, try to change its decision to PASS, as someone with direct database access:
+
+    docker compose exec -T postgres psql -U compliance -d compliance -c "UPDATE decision SET outcome = 'PASS' WHERE order_id = 2"
+
+> ERROR:  audit table decision is insert-only
+
+`DELETE FROM decision WHERE order_id = 2` gets the same refusal, and `GET /api/orders/2` still reads `"status":"BLOCK"`. Orders, decisions, rule results, quarantines, limit changes and approvals are all insert-only, enforced by database triggers (migration V2), so neither a bug in the service nor a hand-typed fix can rewrite them. A database superuser could still drop a trigger; that is a schema change, which a production database would restrict to a controlled release.
 
 ## Start again
 

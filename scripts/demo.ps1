@@ -10,7 +10,7 @@
          report healthy.
       4. Signs a token for each demo person in PowerShell itself, using the same secret and
          algorithm TokenTool uses, and checks each one against GET /api/me.
-      5. Runs the scenes from docs/DEMO.md (1, 1b, 2, 6 and 8) and checks each response against
+      5. Runs the scenes from docs/DEMO.md (1, 1b, 2, 6, 8 and 9) and checks each response against
          what that file says should happen. Each scene prints a plain-English caption ("What this
          shows" before, "So what" after), so a recording with no voice still explains itself.
       6. Stops the service it started (only that one) and leaves the database running.
@@ -265,6 +265,25 @@ function Invoke-DemoApi {
     }
 }
 
+# Runs one SQL statement through psql inside the demo database container, as someone with
+# direct database access would. Windows PowerShell 5.1 turns a native command's stderr into
+# error records when it is redirected, which 'Stop' would throw on; psql's refusal is the
+# expected result here, so this relaxes that for the one call and returns the text instead.
+function Invoke-DemoSql {
+    param([string]$Sql)
+    $previousPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $output = & docker compose exec -T postgres psql -U compliance -d compliance -v ON_ERROR_STOP=1 -c $Sql 2>&1
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousPreference
+    }
+    $firstLine = @($output | ForEach-Object { "$_" } | Where-Object { $_ -notmatch '^\s*$' }) | Select-Object -First 1
+    return [pscustomobject]@{ ExitCode = $exitCode; FirstLine = $firstLine }
+}
+
 # ---------------------------------------------------------------------------
 # 1. Pre-checks
 # ---------------------------------------------------------------------------
@@ -451,7 +470,8 @@ try {
     $scene2Body = @{ clientOrderId = 'demo-wvf-1'; fundId = 2; side = 'BUY'; ticker = 'KSTL'; quantity = 100000 }
     $scene2 = Invoke-DemoApi -Method POST -Path '/api/orders' -Token $tokens['anne'] -Body $scene2Body
     $scene2Diversification = $scene2.Body.decision.ruleResults | Where-Object { $_.ruleName -eq 'diversification' } | Select-Object -First 1
-    Write-Host "HTTP $($scene2.StatusCode), order id $($scene2.Body.id), status $($scene2.Body.status)"
+    $scene2OrderId = $scene2.Body.id
+    Write-Host "HTTP $($scene2.StatusCode), order id $scene2OrderId, status $($scene2.Body.status)"
     Write-Host "Diversification: $($scene2Diversification.reason)"
     Add-Check -Passed ($scene2.Body.status -eq 'BLOCK') -Description 'Scene 2: the same buy blocks for WVF'
     Write-Caption 'So what' "WVF would reach $(Format-Pct $scene2Diversification.measuredValue)%, over the $(Format-Pct $scene2Diversification.limitValue)% limit, so it is blocked."
@@ -515,6 +535,27 @@ try {
     Add-Check -Passed ([decimal]$overLimitNow -eq 20) -Description 'Scene 8: the active limit now reads 20'
     Write-Caption 'So what' 'no approval can pass the legal limit: that lives in code, so 40% is refused outright.'
     Write-Caption 'So what' "tightening needs a second supervisor: sup-1 cannot approve their own request; sup-2's approval makes $(Format-Pct $overLimitNow)% active."
+    Wait-ForEnter -Next 'scene 9'
+
+    Write-Scene 'Scene 9: someone with database access tries to rewrite history'
+    Write-Caption 'What this shows' "scene 2's order $scene2OrderId was blocked. Someone who can type SQL straight into the database"
+    Write-Caption 'What this shows' 'tries to change that decision to PASS, then tries to delete it.'
+
+    $tamperSql = "UPDATE decision SET outcome = 'PASS' WHERE order_id = $scene2OrderId"
+    $tamper = Invoke-DemoSql -Sql $tamperSql
+    Write-Host "$($tamperSql): $($tamper.FirstLine)"
+    Add-Check -Passed ($tamper.ExitCode -ne 0 -and $tamper.FirstLine -match 'insert-only') -Description 'Scene 9: the database refuses to change the decision'
+
+    $eraseSql = "DELETE FROM decision WHERE order_id = $scene2OrderId"
+    $erase = Invoke-DemoSql -Sql $eraseSql
+    Write-Host "$($eraseSql): $($erase.FirstLine)"
+    Add-Check -Passed ($erase.ExitCode -ne 0 -and $erase.FirstLine -match 'insert-only') -Description 'Scene 9: the database refuses to delete the decision'
+
+    $scene2Now = Invoke-DemoApi -Method GET -Path "/api/orders/$scene2OrderId" -Token $tokens['anne']
+    Write-Host "GET /api/orders/$($scene2OrderId): HTTP $($scene2Now.StatusCode), status $($scene2Now.Body.status)"
+    Add-Check -Passed ($scene2Now.StatusCode -eq 200 -and $scene2Now.Body.status -eq 'BLOCK') -Description 'Scene 9: the order still reads BLOCK'
+    Write-Caption 'So what' 'orders, decisions, approvals and events can only be added to, never changed or removed.'
+    Write-Caption 'So what' 'the database itself refuses, so a bug in the service or a hand-typed fix cannot rewrite them.'
 
     # -----------------------------------------------------------------------
     # 6. Summary
