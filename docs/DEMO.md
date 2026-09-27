@@ -12,6 +12,12 @@ Docker Desktop must be running.
 | Start the service | `./mvnw spring-boot:run -Dspring-boot.run.profiles=local` |
 | Check it is up | open http://localhost:8080/actuator/health, expect `{"status":"UP"}` |
 
+**On Windows PowerShell:** run from the project folder, since both commands fail anywhere else. Use `.\mvnw.cmd`, and put each `-D...` setting in quotes, or PowerShell splits it at the first dot:
+
+    cd path\to\pre-trade-compliance-service
+    docker compose up -d
+    .\mvnw.cmd spring-boot:run "-Dspring-boot.run.profiles=local"
+
 If startup fails with `Migration checksum mismatch`, your local database was made by an older build. `docker compose down -v` deletes it (demo data only), then start again.
 
 ## 2. Get tokens
@@ -26,6 +32,10 @@ The service trusts a signed token saying who you are and your roles. In a second
 | sup-2 | SUPERVISOR | same, with `-Dexec.args="sup-2 SUPERVISOR"` |
 
 Each prints one long line starting `eyJ`. That is the token. Tokens expire; add a lifetime in minutes to keep one longer, e.g. `-Dexec.args="anne TRADER 120"`. A 401 means make a new one.
+
+**On Windows PowerShell:** in a second window, from the project folder. Change `anne TRADER 120` for each person, e.g. `sup-1 SUPERVISOR 120`:
+
+    .\mvnw.cmd -q test-compile exec:java "-Dexec.mainClass=io.github.ciaran11221.compliance.support.TokenTool" "-Dexec.classpathScope=test" "-Dexec.args=anne TRADER 120"
 
 ## 3. Open the Swagger page
 
