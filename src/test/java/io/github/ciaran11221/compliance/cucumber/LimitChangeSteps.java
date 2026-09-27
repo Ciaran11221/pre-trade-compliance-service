@@ -66,10 +66,13 @@ public class LimitChangeSteps {
 				.body(res.bodyTo(String.class)));
 
 		state.setLastResponse(response);
-		if (response.getStatusCode().is2xxSuccessful()) {
-			LimitChangeView view = objectMapper.readValue(response.getBody(), LimitChangeView.class);
-			state.setCurrentChangeId(view.id());
-		}
+		// A plain verb ("asks", "approves", "buys") expects success; a refusal gets its own
+		// "tries to ..." sentence, as release does. Failing here stops a later step reading stale state.
+		assertThat(response.getStatusCode().is2xxSuccessful())
+			.as("%s's request to change %s to %s: %s", staff, setting, newValue, response.getBody())
+			.isTrue();
+		LimitChangeView view = objectMapper.readValue(response.getBody(), LimitChangeView.class);
+		state.setCurrentChangeId(view.id());
 	}
 
 	@Then("the change needs {int} approvals")
@@ -89,6 +92,9 @@ public class LimitChangeSteps {
 				.headers(res.getHeaders())
 				.body(res.bodyTo(String.class)));
 		state.setLastResponse(response);
+		assertThat(response.getStatusCode().is2xxSuccessful())
+			.as("%s's approval of change %d: %s", staff, id, response.getBody())
+			.isTrue();
 	}
 
 	@Then("the change is {word}")

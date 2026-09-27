@@ -96,15 +96,18 @@ public class FactSteps {
 		assertThat(count).as("%s is on the restricted list", ticker).isGreaterThan(0);
 	}
 
-	/** Sum of every not-yet-filled-or-cancelled BUY of this ticker for this fund -- OrderService's
-	 * own "pending exposure" reading (OrderRepository.findPendingOrders), not merely what a fixture
-	 * step claims it submitted. */
+	/** Sum of every BUY of this ticker for this fund that was decided PASS and has no FILLED or
+	 * CANCELLED event: the orders the cash rule counts as pending (OrderRepository.findPendingOrders
+	 * also counts an order in an open quarantine; no fixture creates one). Written as its own query
+	 * rather than calling findPendingOrders, so the fact is checked against the database, not
+	 * against the code under test. */
 	@Given("fund {word} has a pending buy of {money} of {word}")
 	public void fundHasAPendingBuyOf(String code, BigDecimal amount, String ticker) {
 		List<BigDecimal> values = jdbcTemplate.queryForList("""
 				SELECT o.quantity * o.reference_price
 				FROM trade_order o JOIN fund f ON f.id = o.fund_id JOIN security s ON s.id = o.security_id
 				WHERE f.code = ? AND s.ticker = ? AND o.side = 'BUY'
+				  AND EXISTS (SELECT 1 FROM decision d WHERE d.order_id = o.id AND d.outcome = 'PASS')
 				  AND NOT EXISTS (
 				      SELECT 1 FROM order_event e WHERE e.order_id = o.id AND e.event_type IN ('FILLED', 'CANCELLED')
 				  )

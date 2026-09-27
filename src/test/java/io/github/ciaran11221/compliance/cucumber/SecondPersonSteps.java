@@ -37,6 +37,11 @@ public class SecondPersonSteps {
 	@When("{staff} releases {staff}'s order")
 	public void staffReleases(String actor, String targetStaff) {
 		release(actor, targetStaff, CucumberSupport.roleOf(jdbcTemplate, actor));
+		// A plain verb expects success; "tries to release" is the sentence for a refusal.
+		if (!state.lastResponse().getStatusCode().is2xxSuccessful()) {
+			throw new AssertionError(actor + "'s release of " + targetStaff + "'s order was refused: "
+					+ state.lastResponse().getStatusCode() + " " + state.lastResponse().getBody());
+		}
 	}
 
 	private void release(String actor, String targetStaff, String role) {

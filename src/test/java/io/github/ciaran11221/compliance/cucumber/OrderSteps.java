@@ -89,10 +89,14 @@ public class OrderSteps {
 				.body(res.bodyTo(String.class)));
 
 		state.setLastResponse(response);
-		if (response.getStatusCode().value() == 201) {
-			OrderView view = objectMapper.readValue(response.getBody(), OrderView.class);
-			state.recordOrder(staff, view.id());
+		// Every order sentence expects the order to be accepted and decided. Failing here stops a
+		// later "the order is ..." step from reading an earlier order instead of this one.
+		if (response.getStatusCode().value() != 201) {
+			throw new AssertionError(staff + "'s " + side + " of " + quantity + " " + ticker + " for fund " + fundCode
+					+ " was not accepted: " + response.getStatusCode() + " " + response.getBody());
 		}
+		OrderView view = objectMapper.readValue(response.getBody(), OrderView.class);
+		state.recordOrder(staff, view.id());
 	}
 
 }

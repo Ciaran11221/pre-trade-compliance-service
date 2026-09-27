@@ -40,9 +40,11 @@ import io.github.ciaran11221.compliance.support.MutableClock;
  * so applying a ZPHR-only fixture never touches KSTL's unrelated restricted status); applies any
  * settings: as a new setting_value row (none of today's five fixtures use this, but a future one
  * can); and submits each pendingOrders: entry as a real order over the HTTP API, signed by the
- * seeded trader "anne" -- the most honest way to create "pending" exposure (OrderService's own
- * findPendingOrders), since it runs the exact same intake path, quarantine check and per-fund lock
- * a real trader's order would.
+ * seeded trader "anne", since that runs the same intake path, quarantine check and per-fund lock
+ * a real trader's order would. The order must come back PASS: OrderRepository.findPendingOrders
+ * counts only a PASS order with no FILLED or CANCELLED event (or one in an open quarantine) as
+ * pending exposure, so a pending order that came back BLOCK would leave the fixture without the
+ * exposure it describes.
  */
 public class FixtureSteps {
 
@@ -145,9 +147,8 @@ public class FixtureSteps {
 
 	/**
 	 * Submits a fixture's pendingOrders: entry as a real order, signed by the seeded trader "anne",
-	 * over the same POST /api/orders every When step uses -- OrderService's own findPendingOrders
-	 * counts any order that is not yet FILLED or CANCELLED as pending exposure, whatever its own
-	 * decision outcome, so this is exactly how a real pending buy would come to exist.
+	 * over the same POST /api/orders every When step uses, and fails unless it comes back PASS (see
+	 * the class Javadoc for why only a PASS order counts as pending).
 	 */
 	private void submitFixturePendingOrder(long fundId, Scenario.Order pending) throws Exception {
 		String token = CucumberSupport.token("anne", "TRADER");
@@ -170,6 +171,12 @@ public class FixtureSteps {
 		if (response.getStatusCode().value() != 201) {
 			throw new IllegalStateException("fixture's pending " + pending.side() + " of " + pending.ticker()
 					+ " for fund id " + fundId + " was rejected: " + response.getStatusCode() + " " + response.getBody());
+		}
+		String status = objectMapper.readTree(response.getBody()).path("status").asText();
+		if (!"PASS".equals(status)) {
+			throw new IllegalStateException("fixture's pending " + pending.side() + " of " + pending.ticker()
+					+ " for fund id " + fundId + " came back " + status + ", not PASS, so it would not count as pending: "
+					+ response.getBody());
 		}
 	}
 
