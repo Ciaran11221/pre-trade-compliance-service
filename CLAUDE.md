@@ -30,6 +30,7 @@ Checks a fund's buy and sell orders before they reach a broker: the restricted l
 | `src/test/resources/features/` | The plain-English Cucumber scenarios (M10, issue #31), run by `io.github.ciaran11221.compliance.cucumber.RunCucumberTest` inside `./mvnw verify`. |
 | `src/test/java/io/github/ciaran11221/compliance/scenario/` | Scenario records, the loader, validation, the index generator, FixtureLoader (fixtures/fund-state/*.yaml), and RequiredCoverage (how a later rule provider plugs into ScenarioCoverageTest). |
 | `docs/SCENARIOS.md` | Generated index of the scenario corpus. Never edit by hand. |
+| `docs/LOGIC.md` | The decision logic as IF / ELSE: the order flow, each rule, the deciding line of code. Update it when a rule changes. |
 | `docs/WORKLOG.md` | One row per merged pull request: who wrote it, who reviewed it, test counts. |
 | `scripts/demo.ps1` | Runs the docs/DEMO.md scenes end to end against a real local instance. |
 
