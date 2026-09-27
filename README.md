@@ -154,8 +154,19 @@ The review found at least one problem per milestone that the tests of the time d
 | Limit changes | An approved loosening waiting its 24 hours would silently undo a tightening made during the wait |
 | Order intake | The same order id sent for two funds at once gave the second caller a server error, because a failed insert ends the database transaction |
 | Quarantine | Demo staff ids in a versioned migration would have made every real supervisor a trader |
+| Errors and validation | The wrong-role tests used a staff id that does not exist, so their 403 came from the unknown-staff check, not the role check |
+| Quarantine assignment | The database-constraint tests accepted any integrity error, so an unrelated failure in the same insert would have passed them |
+| Property tests | The limits property checked its answer with the same function the service uses to refuse a request, so a broken bound check would have passed both |
+| Plain-English scenarios | A fixture's pending order was accepted whatever its decision, though the cash rule counts only a passed order as pending |
 
-`./mvnw verify` on the tagged commit: 257 tests, 0 failures. Scenario index: [docs/SCENARIOS.md](docs/SCENARIOS.md).
+The tests, from the bottom up:
+
+- JUnit and MockMvc tests against a real Postgres started by Testcontainers.
+- The YAML scenario corpus, indexed in [docs/SCENARIOS.md](docs/SCENARIOS.md). The build fails if a rule has no scenario.
+- Three property tests. Each checks 1,000 generated cases (a fund and a buy, a sequence of limit changes, or a sequence of release and reject calls) against an answer worked out in the test, not by the code under test.
+- Eight Cucumber scenarios in plain English, in [src/test/resources/features/](src/test/resources/features/). They read the same fund-state fixtures as the corpus. Each "Given" sentence is checked against the database, and each "Then" reads the stored decision back over HTTP.
+
+`./mvnw verify` on the tagged v1.0.0 commit: 257 tests, 0 failures. On `main`, 27 Sep 2026: 322 tests, 0 failures.
 
 ## Licence
 

@@ -55,6 +55,12 @@ Money is `BigDecimal` everywhere, never `double`. Look for comparisons written a
 
 **Try this:** in `S001`, change `outcome: PASS` to `BLOCK`. Run `RuleScenarioTest` and read the failure message.
 
+`src/test/resources/features/` says eight of these cases in plain English, and Cucumber runs them inside `./mvnw verify`. S001 to S005 and the Cucumber scenarios read the same fund state from `src/test/resources/fixtures/fund-state/`. The step code is in `src/test/java/io/github/ciaran11221/compliance/cucumber/`: each "Given" sentence is checked against the database, so the English cannot drift from the data.
+
+**Try this:** in `features/diversification.feature`, change `20.5%` to `20.6%`. Run `./mvnw test -Dtest=RunCucumberTest` and read which step failed.
+
+The property tests check 1,000 generated cases each. `rules/DiversificationBucketPropertyTest` is the one to read: it needs no database, and its expected answer is worked out in the test, not by the rule.
+
 ## 5. Nothing is edited: the audit tables
 
 Open `src/main/resources/db/migration/V2__audit_insert_only.sql`. A database trigger rejects `UPDATE` and `DELETE` on every audit table, so even someone with a database login can't rewrite a decision. An order's current status is its latest event, not a column that changes.
