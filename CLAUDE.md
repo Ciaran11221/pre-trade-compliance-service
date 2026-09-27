@@ -25,8 +25,10 @@ Checks a fund's buy and sell orders before they reach a broker: the restricted l
 | `src/main/resources/db/migration/` | Schema (V1), audit insert-only triggers (V2), default limit settings (V3). New migrations are V4 and up. Never edit an applied one. |
 | `src/main/resources/db/seed/R__seed.sql` | Fictional demo funds, securities and staff. Loaded by the `local` and `test` profiles only. |
 | `src/test/resources/route-access.csv` | Which roles may call which route. Every new route needs a row, or the build fails. |
-| `src/test/resources/scenarios/` | The scenario corpus: one YAML file per scenario. |
-| `src/test/java/io/github/ciaran11221/compliance/scenario/` | Scenario records, the loader, validation, the index generator, and RequiredCoverage (how a later rule provider plugs into ScenarioCoverageTest). |
+| `src/test/resources/scenarios/` | The scenario corpus: one YAML file per scenario. A `kind: rule` scenario sets `given:` inline or `fixture: <name>`, never both. |
+| `src/test/resources/fixtures/fund-state/` | Fund-state fixtures (fund, securities, holdings, restricted list, pending orders), one YAML file per fixture, read by both the JUnit scenario runner and the Cucumber suite. |
+| `src/test/resources/features/` | The plain-English Cucumber scenarios (M10, issue #31), run by `io.github.ciaran11221.compliance.cucumber.RunCucumberTest` inside `./mvnw verify`. |
+| `src/test/java/io/github/ciaran11221/compliance/scenario/` | Scenario records, the loader, validation, the index generator, FixtureLoader (fixtures/fund-state/*.yaml), and RequiredCoverage (how a later rule provider plugs into ScenarioCoverageTest). |
 | `docs/SCENARIOS.md` | Generated index of the scenario corpus. Never edit by hand. |
 | `docs/WORKLOG.md` | One row per merged pull request: who wrote it, who reviewed it, test counts. |
 

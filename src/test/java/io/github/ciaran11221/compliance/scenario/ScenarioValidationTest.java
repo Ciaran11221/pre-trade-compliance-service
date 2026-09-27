@@ -32,7 +32,7 @@ class ScenarioValidationTest {
 
 	@Test
 	void missingIdIsReported() {
-		Scenario scenario = new Scenario(null, "t", "rule", List.of("rule:diversification"), GIVEN, WHEN,
+		Scenario scenario = new Scenario(null, "t", "rule", List.of("rule:diversification"), GIVEN, null, WHEN,
 				new Scenario.Then("PASS", Map.of(), "n"), List.of());
 
 		List<String> errors = ScenarioValidation.validate(List.of(new Loaded("S001-x.yaml", scenario)));
@@ -89,7 +89,7 @@ class ScenarioValidationTest {
 
 	@Test
 	void missingOutcomeIsReported() {
-		Scenario scenario = new Scenario("S001", "t", "rule", List.of("rule:diversification"), GIVEN, WHEN,
+		Scenario scenario = new Scenario("S001", "t", "rule", List.of("rule:diversification"), GIVEN, null, WHEN,
 				new Scenario.Then(null, Map.of(), "n"), List.of());
 
 		List<String> errors = ScenarioValidation.validate(List.of(new Loaded("S001-x.yaml", scenario)));
@@ -97,8 +97,48 @@ class ScenarioValidationTest {
 		assertThat(errors).anyMatch(e -> e.contains("S001-x.yaml") && e.contains("then.outcome is missing"));
 	}
 
+	@Test
+	void ruleScenarioWithBothGivenAndFixtureIsReported() {
+		Scenario scenario = new Scenario("S001", "t", "rule", List.of("rule:diversification"), GIVEN,
+				"hgf-150m-over-5", WHEN, new Scenario.Then("PASS", Map.of(), "n"), List.of());
+
+		List<String> errors = ScenarioValidation.validate(List.of(new Loaded("S001-x.yaml", scenario)));
+
+		assertThat(errors).anyMatch(e -> e.contains("S001-x.yaml") && e.contains("sets both given and fixture"));
+	}
+
+	@Test
+	void ruleScenarioWithNeitherGivenNorFixtureIsReported() {
+		Scenario scenario = new Scenario("S001", "t", "rule", List.of("rule:diversification"), null, null, WHEN,
+				new Scenario.Then("PASS", Map.of(), "n"), List.of());
+
+		List<String> errors = ScenarioValidation.validate(List.of(new Loaded("S001-x.yaml", scenario)));
+
+		assertThat(errors).anyMatch(e -> e.contains("S001-x.yaml") && e.contains("sets neither given nor fixture"));
+	}
+
+	@Test
+	void ruleScenarioWithAMissingFixtureIsReportedByName() {
+		Scenario scenario = new Scenario("S001", "t", "rule", List.of("rule:diversification"), null,
+				"no-such-fixture", WHEN, new Scenario.Then("PASS", Map.of(), "n"), List.of());
+
+		List<String> errors = ScenarioValidation.validate(List.of(new Loaded("S001-x.yaml", scenario)));
+
+		assertThat(errors).anyMatch(e -> e.contains("S001-x.yaml") && e.contains("\"no-such-fixture\"")
+				&& e.contains("does not exist"));
+	}
+
+	@Test
+	void ruleScenarioWithAnExistingFixtureProducesNoErrors() {
+		Scenario scenario = new Scenario("S001", "t", "rule", List.of("rule:diversification"), null,
+				"hgf-150m-over-5", WHEN, new Scenario.Then("PASS", Map.of(), "n"), List.of());
+
+		assertThat(ScenarioValidation.validate(List.of(new Loaded("S001-x.yaml", scenario)))).isEmpty();
+	}
+
 	private static Scenario scenario(String id, String kind, List<String> covers, String outcome) {
-		return new Scenario(id, "t", kind, covers, GIVEN, WHEN, new Scenario.Then(outcome, Map.of(), "n"), List.of());
+		return new Scenario(id, "t", kind, covers, GIVEN, null, WHEN, new Scenario.Then(outcome, Map.of(), "n"),
+				List.of());
 	}
 
 }

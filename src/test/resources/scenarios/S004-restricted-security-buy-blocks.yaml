@@ -2,14 +2,7 @@ id: S004
 title: Buy of a restricted security blocks
 kind: rule
 covers: [rule:restricted-list]
-given:
-  settings: {}
-  fund: {code: HGF, totalAssets: "1000000000", cash: "100000000", diversified: true}
-  securities:
-    - {ticker: ZPHR, price: "50", votingSharesOutstanding: 20000000, avgDailyVolume: 500000}
-  holdings: []
-  restricted: [ZPHR]
-  pendingOrders: []
+fixture: hgf-zphr-restricted
 when:
   order: {side: BUY, ticker: ZPHR, quantity: 10000}
 then:

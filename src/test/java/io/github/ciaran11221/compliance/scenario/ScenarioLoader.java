@@ -58,7 +58,11 @@ public final class ScenarioLoader {
 
 	/**
 	 * Parses every scenario file and validates the corpus, sorted by id. Throws, naming every
-	 * problem file, if validation fails; see ScenarioValidation for the rules.
+	 * problem file, if validation fails; see ScenarioValidation for the rules. A "kind: rule"
+	 * scenario that named a fixture: rather than an inline given: has it resolved here (after
+	 * validation has already confirmed the fixture exists), so every consumer of this list --
+	 * RuleScenarioTest included -- reads scenario.given() and never needs to know which form the
+	 * file used.
 	 */
 	public static List<Scenario> loadAllValidated() {
 		List<Loaded> loaded = loadAll();
@@ -66,7 +70,16 @@ public final class ScenarioLoader {
 		if (!errors.isEmpty()) {
 			throw new IllegalStateException("Scenario corpus is invalid:\n" + String.join("\n", errors));
 		}
-		return loaded.stream().map(Loaded::scenario).sorted(Comparator.comparing(Scenario::id)).toList();
+		return loaded.stream().map(Loaded::scenario).map(ScenarioLoader::resolveFixture)
+			.sorted(Comparator.comparing(Scenario::id))
+			.toList();
+	}
+
+	private static Scenario resolveFixture(Scenario scenario) {
+		if (scenario.given() != null || scenario.fixture() == null) {
+			return scenario;
+		}
+		return scenario.withGiven(FixtureLoader.load(scenario.fixture()));
 	}
 
 }

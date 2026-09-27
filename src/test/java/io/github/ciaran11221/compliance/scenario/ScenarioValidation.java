@@ -62,6 +62,10 @@ public final class ScenarioValidation {
 			if (scenario.then() == null || scenario.then().outcome() == null || scenario.then().outcome().isBlank()) {
 				errors.add(file + ": then.outcome is missing");
 			}
+
+			if ("rule".equals(scenario.kind())) {
+				errors.addAll(validateGivenOrFixture(file, scenario));
+			}
 		}
 
 		filesById.forEach((id, files) -> {
@@ -70,6 +74,29 @@ public final class ScenarioValidation {
 			}
 		});
 
+		return errors;
+	}
+
+	/**
+	 * A "kind: rule" scenario sets exactly one of given (inline) or fixture (a name resolved
+	 * against fixtures/fund-state/&lt;name&gt;.yaml by FixtureLoader) -- never both, never neither.
+	 */
+	private static List<String> validateGivenOrFixture(String file, Scenario scenario) {
+		List<String> errors = new ArrayList<>();
+		boolean hasGiven = scenario.given() != null;
+		boolean hasFixture = scenario.fixture() != null && !scenario.fixture().isBlank();
+
+		if (hasGiven && hasFixture) {
+			errors.add(file + ": kind \"rule\" sets both given and fixture \"" + scenario.fixture()
+					+ "\" -- exactly one is allowed");
+		}
+		else if (!hasGiven && !hasFixture) {
+			errors.add(file + ": kind \"rule\" sets neither given nor fixture -- exactly one is required");
+		}
+		else if (hasFixture && !FixtureLoader.exists(scenario.fixture())) {
+			errors.add(file + ": fixture \"" + scenario.fixture()
+					+ "\" does not exist at fixtures/fund-state/" + scenario.fixture() + ".yaml");
+		}
 		return errors;
 	}
 

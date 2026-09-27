@@ -1,0 +1,9 @@
+# Copied from S003-diversification-sell-not-applicable.yaml
+settings: {}
+fund: {code: CBF, totalAssets: "1000000000", cash: "100000000", diversified: true}
+securities:
+  - {ticker: KSTL, price: "100", votingSharesOutstanding: 50000000, avgDailyVolume: 2000000}
+holdings:
+  - {ticker: KSTL, quantity: 600000}
+restricted: []
+pendingOrders: []

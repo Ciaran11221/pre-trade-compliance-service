@@ -16,7 +16,25 @@
 	<properties>
 		<java.version>17</java.version>
 		<springdoc-openapi.version>3.1.1</springdoc-openapi.version>
+		<cucumber.version>8.0.2</cucumber.version>
 	</properties>
+	<dependencyManagement>
+		<dependencies>
+			<!-- Pins cucumber-java's own internal dependencies (gherkin, messages, query, the
+			     formatters cucumber-core pulls in) to one mutually consistent set of versions.
+			     Without this, Maven cannot resolve a single io.cucumber:messages version that
+			     satisfies every formatter's own version range. Manages only io.cucumber:* (see the
+			     bom itself): it declares no org.junit or org.springframework version, so it never
+			     competes with spring-boot-dependencies' own management of those. -->
+			<dependency>
+				<groupId>io.cucumber</groupId>
+				<artifactId>cucumber-bom</artifactId>
+				<version>${cucumber.version}</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
 	<dependencies>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
@@ -115,6 +133,46 @@
 		<dependency>
 			<groupId>tools.jackson.dataformat</groupId>
 			<artifactId>jackson-dataformat-yaml</artifactId>
+			<scope>test</scope>
+		</dependency>
+
+		<!-- M10 part 2 (issue #31): runs src/test/resources/features/*.feature as real tests inside
+		     ./mvnw verify. cucumber-spring 8.0.2's own POM builds and tests against Spring
+		     Framework 7.0.9, exactly what spring-boot-starter-parent 4.1.1 pins
+		     (spring-framework.version), so there is no Spring version mismatch; org.junit.platform
+		     and org.junit.jupiter versions come from the same junit-bom (6.0.3) Spring Boot's own
+		     BOM imports, since neither cucumber artifact below pins its own version for them. See
+		     ./mvnw dependency:tree for the versions actually resolved. -->
+		<dependency>
+			<groupId>io.cucumber</groupId>
+			<artifactId>cucumber-java</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>io.cucumber</groupId>
+			<artifactId>cucumber-spring</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<!-- cucumber-spring declares this "provided" (its own POM's word for "the consumer supplies
+		     it"), so it is not pulled in transitively; spring-boot-dependencies does not manage its
+		     version either, so it is pinned here to the same spring-framework.version Boot 4.1.1
+		     already pins spring-test etc to. -->
+		<dependency>
+			<groupId>org.springframework</groupId>
+			<artifactId>spring-context-support</artifactId>
+			<version>${spring-framework.version}</version>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>io.cucumber</groupId>
+			<artifactId>cucumber-junit-platform-engine</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<!-- No version: managed by the junit-bom spring-boot-dependencies imports, same as every
+		     other org.junit.platform/org.junit.jupiter artifact in this build. -->
+		<dependency>
+			<groupId>org.junit.platform</groupId>
+			<artifactId>junit-platform-suite</artifactId>
 			<scope>test</scope>
 		</dependency>
 	</dependencies>
