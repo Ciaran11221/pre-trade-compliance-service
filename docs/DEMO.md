@@ -4,6 +4,8 @@ Nine scenes to run against the service on your own machine. Every response quote
 
 ## Run it all with one command
 
+To watch it without running it, there is [a recording of the script](https://github.com/user-attachments/assets/d47d7787-276c-4ca1-b2cd-6c094393d7f9) (`-AutoAdvance 15`, 1 minute 25 seconds, no sound), also shown in the README under [See it run](../README.md#see-it-run).
+
     .\scripts\demo.ps1
 
 With Docker running and nothing else on port 8080, this resets the demo database, starts the

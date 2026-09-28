@@ -56,7 +56,11 @@ Errors are RFC 7807 problem details: 400, 401, 403 with the reason, 404, 409, 42
 
 ## See it run
 
-On Windows, with Docker running, from the project folder:
+A recording of `.\scripts\demo.ps1 -AutoAdvance 15`, 1 minute 25 seconds, no sound: scenes 1, 1b, 2, 6, 8 and 9, ending on "All 14 checks matched".
+
+https://github.com/user-attachments/assets/d47d7787-276c-4ca1-b2cd-6c094393d7f9
+
+To run it yourself on Windows, with Docker running, from the project folder:
 
     .\scripts\demo.ps1
 
